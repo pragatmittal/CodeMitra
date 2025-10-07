@@ -5,55 +5,126 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.roomRoutes = void 0;
 const express_1 = __importDefault(require("express"));
-const prisma_1 = require("@/utils/prisma");
-const errorHandler_1 = require("@/middleware/errorHandler");
-const auth_1 = require("@/middleware/auth");
-const validation_1 = require("@/utils/validation");
-const password_1 = require("@/utils/password");
+const prisma_1 = require("../utils/prisma");
+const errorHandler_1 = require("../middleware/errorHandler");
+const auth_1 = require("../middleware/auth");
+const password_1 = require("../utils/password");
 const roomRoutes = express_1.default.Router();
 exports.roomRoutes = roomRoutes;
-roomRoutes.get('/', auth_1.authenticate, (0, validation_1.validateQuery)(validation_1.getRoomsQuerySchema), (0, errorHandler_1.asyncHandler)(async (req, res) => {
-    const { page = 1, limit = 10, search, language, isPublic } = req.query;
-    const userId = req.user.id;
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
-    const where = {
-        OR: [
-            { isPublic: true },
-            { ownerId: userId },
-            { users: { some: { userId } } }
-        ]
+const getBoilerplateCode = (language) => {
+    const templates = {
+        javascript: `// Welcome to CodeMitra - JavaScript
+console.log("Hello, World!");
+
+function add(a, b) {
+  return a + b;
+}
+
+console.log(add(5, 3));
+`,
+        python: `# Welcome to CodeMitra - Python
+print("Hello, World!")
+
+def add(a, b):
+    return a + b
+
+if __name__ == "__main__":
+    print(add(5, 3))
+`,
+        java: `// Welcome to CodeMitra - Java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+        System.out.println(add(5, 3));
+    }
+    
+    public static int add(int a, int b) {
+        return a + b;
+    }
+}
+`,
+        cpp: `// Welcome to CodeMitra - C++
+#include <iostream>
+using namespace std;
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    cout << "Hello, World!" << endl;
+    cout << add(5, 3) << endl;
+    return 0;
+}
+`
     };
-    if (search) {
-        where.name = { contains: search, mode: 'insensitive' };
+    return templates[language] || templates.javascript;
+};
+roomRoutes.post('/', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { name, description, language, visibility, password, maxCapacity } = req.body;
+    const userId = req.user.id;
+    const roomData = {
+        name,
+        description,
+        language: language || 'javascript',
+        visibility: visibility !== false,
+        maxCapacity: maxCapacity || 10,
+        creatorId: userId,
+        code: getBoilerplateCode(language || 'javascript')
+    };
+    if (!roomData.visibility && password) {
+        roomData.password = await (0, password_1.hashPassword)(password);
     }
-    if (language) {
+    const room = await prisma_1.prisma.room.create({
+        data: {
+            ...roomData,
+            participants: {
+                create: {
+                    userId: userId,
+                    status: 'active'
+                }
+            }
+        },
+        include: {
+            creator: {
+                select: { id: true, name: true, email: true }
+            },
+            participants: {
+                include: {
+                    user: {
+                        select: { id: true, name: true, email: true }
+                    }
+                }
+            }
+        }
+    });
+    res.status(201).json({
+        success: true,
+        data: room
+    });
+}));
+roomRoutes.get('/', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { page = 1, limit = 10, language, search } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+    const where = { visibility: true };
+    if (language)
         where.language = language;
-    }
-    if (isPublic !== undefined) {
-        where.isPublic = isPublic === 'true';
-    }
+    if (search)
+        where.name = { contains: search, mode: 'insensitive' };
     const [rooms, total] = await Promise.all([
         prisma_1.prisma.room.findMany({
             where,
             skip,
-            take,
+            take: Number(limit),
             include: {
-                owner: {
-                    select: { id: true, name: true, email: true, avatar: true }
-                },
-                users: {
-                    include: {
-                        user: {
-                            select: { id: true, name: true, email: true, avatar: true }
-                        }
-                    }
+                creator: {
+                    select: { id: true, name: true }
                 },
                 _count: {
-                    select: { users: true }
+                    select: { participants: true }
                 }
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { lastActivity: 'desc' }
         }),
         prisma_1.prisma.room.count({ where })
     ]);
@@ -61,46 +132,26 @@ roomRoutes.get('/', auth_1.authenticate, (0, validation_1.validateQuery)(validat
         success: true,
         data: {
             rooms,
-            pagination: {
-                page: Number(page),
-                limit: Number(limit),
-                total,
-                pages: Math.ceil(total / Number(limit))
-            }
+            total,
+            page: Number(page),
+            pages: Math.ceil(total / Number(limit))
         }
     });
 }));
 roomRoutes.get('/:id', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const { id } = req.params;
-    const userId = req.user.id;
-    const room = await prisma_1.prisma.room.findFirst({
-        where: {
-            id,
-            OR: [
-                { isPublic: true },
-                { ownerId: userId },
-                { users: { some: { userId } } }
-            ]
-        },
+    const room = await prisma_1.prisma.room.findUnique({
+        where: { id },
         include: {
-            owner: {
-                select: { id: true, name: true, email: true, avatar: true }
+            creator: {
+                select: { id: true, name: true, email: true }
             },
-            users: {
+            participants: {
                 include: {
                     user: {
-                        select: { id: true, name: true, email: true, avatar: true }
+                        select: { id: true, name: true, email: true }
                     }
                 }
-            },
-            chatMessages: {
-                include: {
-                    user: {
-                        select: { id: true, name: true, email: true, avatar: true }
-                    }
-                },
-                orderBy: { createdAt: 'desc' },
-                take: 50
             }
         }
     });
@@ -110,67 +161,18 @@ roomRoutes.get('/:id', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(asy
             error: 'Room not found'
         });
     }
-    res.json({
+    return res.json({
         success: true,
         data: room
     });
 }));
-roomRoutes.post('/', auth_1.authenticate, (0, validation_1.validate)(validation_1.createRoomSchema), (0, errorHandler_1.asyncHandler)(async (req, res) => {
-    const { name, description, password, isPublic, maxUsers, language } = req.body;
-    const userId = req.user.id;
-    const roomData = {
-        name: name.trim(),
-        description: description?.trim() || '',
-        isPublic: Boolean(isPublic),
-        maxUsers: Number(maxUsers),
-        language,
-        ownerId: userId,
-        users: {
-            create: {
-                userId,
-                role: 'owner'
-            }
-        }
-    };
-    if (!isPublic) {
-        if (!password || !password.trim()) {
-            return res.status(400).json({
-                success: false,
-                error: 'Password is required for private rooms',
-                code: 'VALIDATION_ERROR'
-            });
-        }
-        roomData.password = await (0, password_1.hashPassword)(password.trim());
-    }
-    const room = await prisma_1.prisma.room.create({
-        data: roomData,
-        include: {
-            owner: {
-                select: { id: true, name: true, email: true, avatar: true }
-            },
-            users: {
-                include: {
-                    user: {
-                        select: { id: true, name: true, email: true, avatar: true }
-                    }
-                }
-            }
-        }
-    });
-    return res.status(201).json({
-        success: true,
-        data: room
-    });
-}));
-roomRoutes.post('/join', auth_1.authenticate, (0, validation_1.validate)(validation_1.joinRoomSchema), (0, errorHandler_1.asyncHandler)(async (req, res) => {
-    const { roomId, password } = req.body;
+roomRoutes.post('/:id/join', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const { id } = req.params;
+    const { password } = req.body;
     const userId = req.user.id;
     const room = await prisma_1.prisma.room.findUnique({
-        where: { id: roomId },
-        include: {
-            users: true,
-            _count: { select: { users: true } }
-        }
+        where: { id },
+        include: { participants: true }
     });
     if (!room) {
         return res.status(404).json({
@@ -178,127 +180,48 @@ roomRoutes.post('/join', auth_1.authenticate, (0, validation_1.validate)(validat
             error: 'Room not found'
         });
     }
-    const existingUser = room.users.find(user => user.userId === userId);
-    if (existingUser) {
-        return res.status(409).json({
-            success: false,
-            error: 'You are already in this room'
-        });
-    }
-    if (room._count.users >= room.maxUsers) {
-        return res.status(403).json({
+    if (room.participants.length >= room.maxCapacity) {
+        return res.status(400).json({
             success: false,
             error: 'Room is full'
         });
     }
-    const isPasswordValid = await (0, password_1.comparePassword)(password, room.password);
-    if (!isPasswordValid) {
-        return res.status(401).json({
+    const existingParticipant = room.participants.find(p => p.userId === userId);
+    if (existingParticipant) {
+        return res.status(400).json({
             success: false,
-            error: 'Invalid room password'
+            error: 'Already in room'
         });
     }
-    await prisma_1.prisma.roomUser.create({
-        data: {
-            userId,
-            roomId,
-            role: 'member'
+    if (!room.visibility && room.password) {
+        if (!password || !(await (0, password_1.comparePassword)(password, room.password))) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid password'
+            });
         }
+    }
+    await prisma_1.prisma.roomParticipant.create({
+        data: { roomId: id, userId, status: 'active' }
     });
-    const updatedRoom = await prisma_1.prisma.room.findUnique({
-        where: { id: roomId },
-        include: {
-            owner: {
-                select: { id: true, name: true, email: true, avatar: true }
-            },
-            users: {
-                include: {
-                    user: {
-                        select: { id: true, name: true, email: true, avatar: true }
-                    }
-                }
-            }
-        }
+    await prisma_1.prisma.room.update({
+        where: { id },
+        data: { lastActivity: new Date() }
     });
-    res.json({
+    return res.json({
         success: true,
-        data: updatedRoom
+        message: 'Joined room successfully'
     });
 }));
 roomRoutes.post('/:id/leave', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
-    const room = await prisma_1.prisma.room.findUnique({
-        where: { id },
-        include: { users: true }
+    await prisma_1.prisma.roomParticipant.deleteMany({
+        where: { roomId: id, userId }
     });
-    if (!room) {
-        return res.status(404).json({
-            success: false,
-            error: 'Room not found'
-        });
-    }
-    const userInRoom = room.users.find(user => user.userId === userId);
-    if (!userInRoom) {
-        return res.status(404).json({
-            success: false,
-            error: 'You are not in this room'
-        });
-    }
-    await prisma_1.prisma.roomUser.delete({
-        where: { id: userInRoom.id }
-    });
-    if (room.ownerId === userId) {
-        await prisma_1.prisma.room.delete({
-            where: { id }
-        });
-    }
-    res.json({
+    return res.json({
         success: true,
         message: 'Left room successfully'
-    });
-}));
-roomRoutes.put('/:id', auth_1.authenticate, (0, validation_1.validate)(validation_1.updateRoomSchema), (0, errorHandler_1.asyncHandler)(async (req, res) => {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const updates = req.body;
-    const room = await prisma_1.prisma.room.findUnique({
-        where: { id }
-    });
-    if (!room) {
-        return res.status(404).json({
-            success: false,
-            error: 'Room not found'
-        });
-    }
-    if (room.ownerId !== userId) {
-        return res.status(403).json({
-            success: false,
-            error: 'Only the room owner can update the room'
-        });
-    }
-    if (updates.password) {
-        updates.password = await (0, password_1.hashPassword)(updates.password);
-    }
-    const updatedRoom = await prisma_1.prisma.room.update({
-        where: { id },
-        data: updates,
-        include: {
-            owner: {
-                select: { id: true, name: true, email: true, avatar: true }
-            },
-            users: {
-                include: {
-                    user: {
-                        select: { id: true, name: true, email: true, avatar: true }
-                    }
-                }
-            }
-        }
-    });
-    res.json({
-        success: true,
-        data: updatedRoom
     });
 }));
 roomRoutes.delete('/:id', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
@@ -313,16 +236,16 @@ roomRoutes.delete('/:id', auth_1.authenticate, (0, errorHandler_1.asyncHandler)(
             error: 'Room not found'
         });
     }
-    if (room.ownerId !== userId) {
+    if (room.creatorId !== userId) {
         return res.status(403).json({
             success: false,
-            error: 'Only the room owner can delete the room'
+            error: 'Only room creator can delete room'
         });
     }
     await prisma_1.prisma.room.delete({
         where: { id }
     });
-    res.json({
+    return res.json({
         success: true,
         message: 'Room deleted successfully'
     });

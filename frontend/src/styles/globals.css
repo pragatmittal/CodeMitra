@@ -2,6 +2,208 @@
 @tailwind components;
 @tailwind utilities;
 
+/* CSS Reset and Normalization */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  line-height: 1.15;
+  -webkit-text-size-adjust: 100%;
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  line-height: 1.6;
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove list styles on ul, ol elements with a list role */
+ul[role='list'],
+ol[role='list'] {
+  list-style: none;
+}
+
+/* Set core root defaults */
+html:focus-within {
+  scroll-behavior: smooth;
+}
+
+/* A elements that don't have a class get default styles */
+a:not([class]) {
+  text-decoration-skip-ink: auto;
+}
+
+/* Make images easier to work with */
+img,
+picture {
+  max-width: 100%;
+  display: block;
+}
+
+/* Inherit fonts for inputs and buttons */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Remove all animations, transitions and smooth scroll for people that prefer not to see them */
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+  
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Z-index hierarchy system */
+.z-navigation { z-index: 1000; }
+.z-modal { z-index: 2000; }
+.z-tooltip { z-index: 3000; }
+.z-dropdown { z-index: 4000; }
+.z-notification { z-index: 5000; }
+
+/* Layout container boundaries */
+.layout-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.layout-panel {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Prevent text selection on UI elements */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Fix for navbar and editor layout collision */
+.collaborative-editor-layout {
+  padding-top: 0; /* Remove padding since we're using marginTop */
+}
+
+.navbar-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4rem; /* 64px - consistent height */
+  z-index: 50;
+}
+
+.editor-container {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  margin-top: 0; /* Ensure no additional top margin */
+}
+
+/* Ensure Monaco Editor doesn't overlap with navbar */
+.monaco-editor-container {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0; /* Allow flex shrinking */
+}
+
+/* Layout controls positioning */
+.layout-controls {
+  position: relative;
+  z-index: 10;
+}
+
+/* Resizable layout container */
+.resizable-layout-container {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Fix for editor toolbar visibility */
+.editor-toolbar {
+  position: relative;
+  z-index: 20;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Ensure proper spacing for main content area */
+.main-content-area {
+  margin-top: 4rem; /* 64px - matches navbar height */
+  height: calc(100vh - 4rem); /* Account for navbar height */
+  overflow: hidden;
+}
+
+/* Smooth transitions */
+.smooth-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus styles */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+}
+
+/* Custom scrollbar */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156 163 175) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(156 163 175);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
+}
+
+/* Component isolation */
+.component-isolation {
+  contain: layout style paint;
+}
+
+/* Prevent layout shifts */
+.prevent-layout-shift {
+  contain: layout;
+}
+
+/* Dark mode transitions */
+.dark-mode-transition {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@300;400;500;600&display=swap');
 
 @layer base {

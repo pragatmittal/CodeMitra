@@ -19,6 +19,9 @@ COPY . .
 
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV production
+ENV NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+ENV DISABLE_SOCKET_CONNECTION=true
 
 # Build the app with standalone output
 RUN npm run build

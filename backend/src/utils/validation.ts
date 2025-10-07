@@ -53,15 +53,9 @@ export const createRoomSchema = Joi.object({
   }),
   language: Joi.string().valid(
     'javascript',
-    'typescript',
     'python',
     'java',
-    'cpp',
-    'c',
-    'go',
-    'rust',
-    'php',
-    'ruby'
+    'cpp'
   ).default('javascript').messages({
     'any.only': 'Please select a valid programming language',
   }),
@@ -86,15 +80,9 @@ export const updateRoomSchema = Joi.object({
   }),
   language: Joi.string().valid(
     'javascript',
-    'typescript',
     'python',
     'java',
-    'cpp',
-    'c',
-    'go',
-    'rust',
-    'php',
-    'ruby'
+    'cpp'
   ).optional().messages({
     'any.only': 'Please select a valid programming language',
   }),
@@ -105,8 +93,8 @@ export const joinRoomSchema = Joi.object({
     'string.uuid': 'Invalid room ID format',
     'any.required': 'Room ID is required',
   }),
-  password: Joi.string().required().messages({
-    'any.required': 'Room password is required',
+  password: Joi.string().allow('').optional().messages({
+    'string.base': 'Password must be a string',
   }),
 });
 
@@ -117,15 +105,9 @@ export const executeCodeSchema = Joi.object({
   }),
   language: Joi.string().valid(
     'javascript',
-    'typescript',
     'python',
     'java',
-    'cpp',
-    'c',
-    'go',
-    'rust',
-    'php',
-    'ruby'
+    'cpp'
   ).required().messages({
     'any.only': 'Please select a valid programming language',
     'any.required': 'Language is required',
@@ -215,15 +197,32 @@ export const getRoomsQuerySchema = Joi.object({
   search: Joi.string().max(100).optional(),
   language: Joi.string().valid(
     'javascript',
-    'typescript',
     'python',
     'java',
-    'cpp',
-    'c',
-    'go',
-    'rust',
-    'php',
-    'ruby'
+    'cpp'
   ).optional(),
   isPublic: Joi.boolean().optional(),
+});
+
+// Code execution validation schema
+export const codeExecutionSchema = Joi.object({
+  code: Joi.string().required().max(10000).messages({
+    'string.empty': 'Code cannot be empty',
+    'string.max': 'Code too long (max 10,000 characters)',
+    'any.required': 'Code is required'
+  }),
+  language: Joi.string().required().valid(
+    'javascript', 'python', 'java', 'cpp'
+  ).messages({
+    'any.only': 'Unsupported programming language',
+    'any.required': 'Language is required'
+  }),
+  input: Joi.string().allow('').optional().max(1000).messages({
+    'string.max': 'Input too long (max 1,000 characters)'
+  }),
+  roomId: Joi.string().required().uuid().messages({
+    'string.guid': 'Invalid room ID format',
+    'any.required': 'Room ID is required'
+  })
+  // Note: userId is extracted from auth middleware, not from request body
 });

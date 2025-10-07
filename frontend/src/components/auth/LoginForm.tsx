@@ -48,8 +48,14 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       setIsLoading(true);
       await login(data.email, data.password);
       onSuccess?.();
-    } catch (error: any) {
-      const message = error.response?.data?.error || 'Login failed';
+    } catch (error: unknown) {
+      let message = 'Login failed';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const response = (error as { response?: { data?: { error?: string } } }).response;
+        if (response?.data?.error) {
+          message = response.data.error;
+        }
+      }
       setError('root', { message });
     } finally {
       setIsLoading(false);

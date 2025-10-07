@@ -1,0 +1,57 @@
+# Development Dockerfile for TypeScript
+FROM node:18-alpine
+
+# Install dependencies for native modules, OpenSSL, and all language runtimes
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    make \
+    g++ \
+    openssl \
+    openssl-dev \
+    openjdk17-jdk \
+    nodejs \
+    npm \
+    bash \
+    curl \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY backend/package*.json ./
+COPY backend/tsconfig.json ./
+
+# Install ALL dependencies (including devDependencies for TypeScript)
+RUN npm install
+
+# Install tsconfig-paths and tsc-alias for path resolution
+RUN npm install --save-dev tsconfig-paths tsc-alias
+
+# Copy prisma schema 
+COPY prisma ./prisma
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S backend -u 1001
+
+# Change ownership of the app directory
+RUN chown -R backend:nodejs /app
+
+# Switch to non-root user
+USER backend
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/healthz || exit 1
+
+# Start the application in development mode
+CMD ["npm", "run", "dev"]

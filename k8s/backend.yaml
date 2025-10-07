@@ -16,7 +16,12 @@ metadata:
   name: backend
   namespace: codemitra
 spec:
-  replicas: 3
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: backend
@@ -24,12 +29,19 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: backend
         image: your-registry/codemitra-backend:latest
         ports:
         - containerPort: 5000
+          name: http
+        - containerPort: 5001
+          name: metrics
         env:
         - name: NODE_ENV
           value: "production"
@@ -56,38 +68,60 @@ spec:
         - name: WORKER_TIMEOUT
           value: "30000"
         - name: MAX_CONCURRENT_EXECUTIONS
-          value: "10"
+          value: "20"
         - name: RATE_LIMIT_WINDOW_MS
           value: "900000"
         - name: RATE_LIMIT_MAX_REQUESTS
-          value: "100"
+          value: "200"
         - name: METRICS_ENABLED
           value: "true"
+        - name: HEALTH_CHECK_INTERVAL
+          value: "30"
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
             memory: "1Gi"
             cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
         livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
           httpGet:
             path: /health
             port: 5000
           initialDelaySeconds: 30
           periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health/ready
-            port: 5000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
         volumeMounts:
         - name: logs
           mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
       volumes:
       - name: logs
         emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      # Pod disruption budget for better availability
+      terminationGracePeriodSeconds: 60
 ---
 apiVersion: v1
 kind: Service
@@ -107,23 +141,57 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: backend-hpa
   namespace: codemitra
+  annotations:
+    autoscaling.keda.sh/triggerAuthentication: "keda-trigger-auth"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: backend
-  minReplicas: 3
-  maxReplicas: 10
+  minReplicas: 5
+  maxReplicas: 20
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70
+        averageUtilization: 60
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: 70
+  - type: Object
+    object:
+      metric:
+        name: requests-per-second
+      describedObject:
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        name: backend-ingress
+      target:
+        type: Value
+        value: 1000
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min

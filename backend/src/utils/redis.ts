@@ -6,11 +6,11 @@ console.log('Redis URL:', REDIS_URL.replace(/:\/\/([^:@]+:[^:@]+)@/, '://***:***
 
 export const redisClient = new Redis(REDIS_URL, {
   enableReadyCheck: false,
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: 3,
   lazyConnect: true,
   enableOfflineQueue: false,
   connectTimeout: 10000,
-  commandTimeout: 5000,
+  commandTimeout: 30000, // Increased from 5s to 30s for BullMQ
 });
 
 redisClient.on('error', (err) => {
@@ -28,5 +28,14 @@ redisClient.on('ready', () => {
 redisClient.on('end', () => {
   console.log('Redis Client Disconnected');
 });
+
+// BullMQ connection configuration - needs different options
+export const bullMQRedisConfig = {
+  host: process.env.REDIS_HOST || 'codemitra-redis',
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+  maxRetriesPerRequest: null, // BullMQ requires null
+  enableReadyCheck: false,
+  lazyConnect: true,
+};
 
 export default redisClient;

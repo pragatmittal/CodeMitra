@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import { prisma } from '../utils/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validate, loginSchema, registerSchema } from '../utils/validation';
@@ -7,6 +8,21 @@ import { generateToken } from '../utils/jwt';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 const authRoutes = express.Router();
+
+// CORS configuration for auth routes
+const authCorsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  methods: ['POST', 'GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+// Apply CORS to all auth routes
+authRoutes.use(cors(authCorsOptions));
+
+// Handle preflight requests for auth routes
+authRoutes.options('*', cors(authCorsOptions));
 
 // Register a new user
 authRoutes.post('/register', validate(registerSchema), asyncHandler(async (req: Request, res: Response) => {

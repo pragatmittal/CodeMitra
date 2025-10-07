@@ -50,7 +50,20 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
+      // Check if this is a validation error vs authentication error
+      const errorMessage = error.response?.data?.error || '';
+      
+      // Don't logout for business logic errors (room validation, etc.)
+      if (errorMessage.includes('Room requires a password') || 
+          errorMessage.includes('Invalid room password') ||
+          errorMessage.includes('Room not found') ||
+          errorMessage.includes('Room is full')) {
+        console.log('🔒 Business logic error, not logging out:', errorMessage);
+        return Promise.reject(error);
+      }
+      
+      // Only logout for actual authentication failures
+      console.log('🚨 Authentication error, logging out:', errorMessage);
       Cookies.remove('token');
       Cookies.remove('user');
       window.location.href = '/';

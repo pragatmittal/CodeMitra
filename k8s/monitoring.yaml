@@ -1,8 +1,13 @@
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: prometheus-config
-  namespace: codemitra
+  namespace: monitoring
 data:
   prometheus.yml: |
     global:
@@ -10,37 +15,9 @@ data:
       evaluation_interval: 15s
     
     rule_files:
-      - "codemitra_rules.yml"
+      - "alert_rules.yml"
     
     scrape_configs:
-      - job_name: 'codemitra-backend'
-        static_configs:
-          - targets: ['backend:5000']
-        metrics_path: /metrics
-        scrape_interval: 10s
-        
-      - job_name: 'codemitra-frontend'
-        static_configs:
-          - targets: ['frontend:3000']
-        metrics_path: /metrics
-        scrape_interval: 30s
-        
-      - job_name: 'codemitra-worker'
-        static_configs:
-          - targets: ['worker:8080']
-        metrics_path: /metrics
-        scrape_interval: 10s
-        
-      - job_name: 'postgres'
-        static_configs:
-          - targets: ['postgres:5432']
-        scrape_interval: 30s
-        
-      - job_name: 'redis'
-        static_configs:
-          - targets: ['redis:6379']
-        scrape_interval: 30s
-        
       - job_name: 'kubernetes-pods'
         kubernetes_sd_configs:
           - role: pod
@@ -57,75 +34,29 @@ data:
             regex: ([^:]+)(?::\d+)?;(\d+)
             replacement: $1:$2
             target_label: __address__
-            
-    alerting:
-      alertmanagers:
-        - static_configs:
-            - targets: ['alertmanager:9093']
-  
-  codemitra_rules.yml: |
-    groups:
-      - name: codemitra_alerts
-        rules:
-          - alert: HighCPUUsage
-            expr: cpu_usage_percent > 80
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High CPU usage detected"
-              description: "CPU usage is above 80% for more than 5 minutes"
-              
-          - alert: HighMemoryUsage
-            expr: memory_usage_percent > 85
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High memory usage detected"
-              description: "Memory usage is above 85% for more than 5 minutes"
-              
-          - alert: DatabaseConnectionFailed
-            expr: database_connection_status == 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Database connection failed"
-              description: "Unable to connect to PostgreSQL database"
-              
-          - alert: RedisConnectionFailed
-            expr: redis_connection_status == 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Redis connection failed"
-              description: "Unable to connect to Redis cache"
-              
-          - alert: HighErrorRate
-            expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
-            for: 2m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High error rate detected"
-              description: "HTTP 5xx error rate is above 10%"
-              
-          - alert: SlowCompilationTime
-            expr: compilation_duration_seconds > 30
-            for: 1m
-            labels:
-              severity: warning
-            annotations:
-              summary: "Slow compilation detected"
-              description: "Code compilation is taking more than 30 seconds"
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      - job_name: 'nginx-ingress'
+        static_configs:
+          - targets: ['nginx-ingress-controller.ingress-nginx.svc.cluster.local:10254']
+      
+      - job_name: 'backend-metrics'
+        static_configs:
+          - targets: ['backend.codemitra.svc.cluster.local:5000']
+        metrics_path: /metrics
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: prometheus
-  namespace: codemitra
+  namespace: monitoring
 spec:
   replicas: 1
   selector:
@@ -138,46 +69,52 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:latest
+        image: prom/prometheus:v2.45.0
         ports:
         - containerPort: 9090
+        args:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus'
+        - '--web.console.libraries=/etc/prometheus/console_libraries'
+        - '--web.console.templates=/etc/prometheus/consoles'
+        - '--storage.tsdb.retention.time=200h'
+        - '--web.enable-lifecycle'
         volumeMounts:
         - name: prometheus-config
           mountPath: /etc/prometheus
-        - name: prometheus-data
+        - name: prometheus-storage
           mountPath: /prometheus
         resources:
           requests:
             memory: "512Mi"
             cpu: "250m"
           limits:
-            memory: "2Gi"
+            memory: "1Gi"
             cpu: "500m"
       volumes:
       - name: prometheus-config
         configMap:
           name: prometheus-config
-      - name: prometheus-data
+      - name: prometheus-storage
         emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: prometheus
-  namespace: codemitra
+  namespace: monitoring
 spec:
   selector:
     app: prometheus
   ports:
   - port: 9090
     targetPort: 9090
-  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
-  namespace: codemitra
+  namespace: monitoring
 spec:
   replicas: 1
   selector:
@@ -190,7 +127,7 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:latest
+        image: grafana/grafana:10.0.0
         ports:
         - containerPort: 3000
         env:
@@ -198,29 +135,28 @@ spec:
           value: "admin123"
         - name: GF_USERS_ALLOW_SIGN_UP
           value: "false"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
         resources:
           requests:
             memory: "256Mi"
-            cpu: "125m"
+            cpu: "100m"
           limits:
             memory: "512Mi"
-            cpu: "250m"
-        volumeMounts:
-        - name: grafana-data
-          mountPath: /var/lib/grafana
+            cpu: "200m"
       volumes:
-      - name: grafana-data
+      - name: grafana-storage
         emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: grafana
-  namespace: codemitra
+  namespace: monitoring
 spec:
   selector:
     app: grafana
   ports:
   - port: 3000
     targetPort: 3000
-  type: ClusterIP

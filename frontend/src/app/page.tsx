@@ -16,6 +16,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (user && !isLoading) {
+      // Redirect to dashboard for authenticated users
       router.push('/dashboard');
     }
   }, [user, isLoading, router]);
@@ -49,26 +50,27 @@ export default function HomePage() {
             <div>
               <h3 className="text-lg font-semibold mb-4">CodeMitra</h3>
               <p className="text-gray-400">
-                Real-time collaborative compiler with video calls, chat, and secure rooms.
+                A real-time collaborative coding platform for developers.
               </p>
             </div>
             <div>
               <h4 className="text-md font-medium mb-4">Features</h4>
               <ul className="space-y-2 text-gray-400">
-                <li>Live Code Collaboration</li>
+                <li>Real-time Code Collaboration</li>
+                <li>Live Code Execution</li>
+                <li>Secure Room Management</li>
                 <li>Multi-language Support</li>
-                <li>Video Calls</li>
-                <li>Real-time Chat</li>
+                <li>User Authentication</li>
               </ul>
             </div>
             <div>
-              <h4 className="text-md font-medium mb-4">Languages</h4>
+              <h4 className="text-md font-medium mb-4">Technology</h4>
               <ul className="space-y-2 text-gray-400">
-                <li>JavaScript/TypeScript</li>
-                <li>Python</li>
-                <li>Java</li>
-                <li>C/C++</li>
-                <li>Go</li>
+                <li>Next.js & React</li>
+                <li>TypeScript</li>
+                <li>Socket.IO</li>
+                <li>PostgreSQL</li>
+                <li>Docker</li>
               </ul>
             </div>
             <div>
@@ -104,7 +106,7 @@ export default function HomePage() {
             </div>
             <LoginForm onSuccess={() => setShowAuth(null)} />
             <p className="text-center mt-4 text-gray-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <button
                 onClick={() => setShowAuth('register')}
                 className="text-primary-600 hover:text-primary-700 font-medium"

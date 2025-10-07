@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authRoutes = void 0;
 const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
 const prisma_1 = require("../utils/prisma");
 const errorHandler_1 = require("../middleware/errorHandler");
 const validation_1 = require("../utils/validation");
@@ -12,6 +13,15 @@ const password_1 = require("../utils/password");
 const jwt_1 = require("../utils/jwt");
 const authRoutes = express_1.default.Router();
 exports.authRoutes = authRoutes;
+const authCorsOptions = {
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    methods: ['POST', 'GET', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
+    optionsSuccessStatus: 200
+};
+authRoutes.use((0, cors_1.default)(authCorsOptions));
+authRoutes.options('*', (0, cors_1.default)(authCorsOptions));
 authRoutes.post('/register', (0, validation_1.validate)(validation_1.registerSchema), (0, errorHandler_1.asyncHandler)(async (req, res) => {
     const { email, password, name } = req.body;
     const existingUser = await prisma_1.prisma.user.findUnique({ where: { email } });

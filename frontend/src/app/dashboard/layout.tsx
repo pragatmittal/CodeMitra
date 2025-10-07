@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Dashboard - CodeMitra',
-  description: 'Manage your coding rooms and collaborate with your team',
+  description: 'Welcome to your CodeMitra dashboard',
 };
 
 export default function DashboardLayout({

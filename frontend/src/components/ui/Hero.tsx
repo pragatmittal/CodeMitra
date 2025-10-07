@@ -58,11 +58,11 @@ export function Hero({ onLogin, onRegister }: HeroProps) {
   ];
 
   const languages = [
-    'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'Go', 'Rust', 'PHP'
+    'JavaScript', 'Python', 'Java', 'C++'
   ];
 
   const stats = [
-    { value: '10+', label: 'Languages' },
+    { value: '4', label: 'Languages' },
     { value: '99.9%', label: 'Uptime' },
     { value: '< 2s', label: 'Execution Time' },
     { value: '256MB', label: 'Memory Limit' }

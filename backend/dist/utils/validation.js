@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRoomsQuerySchema = exports.validateQuery = exports.validate = exports.changePasswordSchema = exports.updateUserSchema = exports.sendMessageSchema = exports.executeCodeSchema = exports.joinRoomSchema = exports.updateRoomSchema = exports.createRoomSchema = exports.loginSchema = exports.registerSchema = void 0;
+exports.codeExecutionSchema = exports.getRoomsQuerySchema = exports.validateQuery = exports.validate = exports.changePasswordSchema = exports.updateUserSchema = exports.sendMessageSchema = exports.executeCodeSchema = exports.joinRoomSchema = exports.updateRoomSchema = exports.createRoomSchema = exports.loginSchema = exports.registerSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 exports.registerSchema = joi_1.default.object({
     email: joi_1.default.string().email().required().messages({
@@ -52,7 +52,7 @@ exports.createRoomSchema = joi_1.default.object({
         'number.min': 'Room must allow at least 2 users',
         'number.max': 'Room cannot exceed 50 users',
     }),
-    language: joi_1.default.string().valid('javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'go', 'rust', 'php', 'ruby').default('javascript').messages({
+    language: joi_1.default.string().valid('javascript', 'python', 'java', 'cpp').default('javascript').messages({
         'any.only': 'Please select a valid programming language',
     }),
 });
@@ -73,7 +73,7 @@ exports.updateRoomSchema = joi_1.default.object({
         'number.min': 'Room must allow at least 2 users',
         'number.max': 'Room cannot exceed 50 users',
     }),
-    language: joi_1.default.string().valid('javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'go', 'rust', 'php', 'ruby').optional().messages({
+    language: joi_1.default.string().valid('javascript', 'python', 'java', 'cpp').optional().messages({
         'any.only': 'Please select a valid programming language',
     }),
 });
@@ -82,15 +82,15 @@ exports.joinRoomSchema = joi_1.default.object({
         'string.uuid': 'Invalid room ID format',
         'any.required': 'Room ID is required',
     }),
-    password: joi_1.default.string().required().messages({
-        'any.required': 'Room password is required',
+    password: joi_1.default.string().allow('').optional().messages({
+        'string.base': 'Password must be a string',
     }),
 });
 exports.executeCodeSchema = joi_1.default.object({
     code: joi_1.default.string().required().messages({
         'any.required': 'Code is required',
     }),
-    language: joi_1.default.string().valid('javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'go', 'rust', 'php', 'ruby').required().messages({
+    language: joi_1.default.string().valid('javascript', 'python', 'java', 'cpp').required().messages({
         'any.only': 'Please select a valid programming language',
         'any.required': 'Language is required',
     }),
@@ -164,7 +164,25 @@ exports.getRoomsQuerySchema = joi_1.default.object({
     page: joi_1.default.number().integer().min(1).default(1),
     limit: joi_1.default.number().integer().min(1).max(100).default(10),
     search: joi_1.default.string().max(100).optional(),
-    language: joi_1.default.string().valid('javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'go', 'rust', 'php', 'ruby').optional(),
+    language: joi_1.default.string().valid('javascript', 'python', 'java', 'cpp').optional(),
     isPublic: joi_1.default.boolean().optional(),
+});
+exports.codeExecutionSchema = joi_1.default.object({
+    code: joi_1.default.string().required().max(10000).messages({
+        'string.empty': 'Code cannot be empty',
+        'string.max': 'Code too long (max 10,000 characters)',
+        'any.required': 'Code is required'
+    }),
+    language: joi_1.default.string().required().valid('javascript', 'python', 'java', 'cpp').messages({
+        'any.only': 'Unsupported programming language',
+        'any.required': 'Language is required'
+    }),
+    input: joi_1.default.string().allow('').optional().max(1000).messages({
+        'string.max': 'Input too long (max 1,000 characters)'
+    }),
+    roomId: joi_1.default.string().required().uuid().messages({
+        'string.guid': 'Invalid room ID format',
+        'any.required': 'Room ID is required'
+    })
 });
 //# sourceMappingURL=validation.js.map

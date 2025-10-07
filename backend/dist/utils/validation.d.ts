@@ -11,4 +11,5 @@ export declare const changePasswordSchema: Joi.ObjectSchema<any>;
 export declare const validate: (schema: Joi.ObjectSchema) => (req: any, res: any, next: any) => any;
 export declare const validateQuery: (schema: Joi.ObjectSchema) => (req: any, res: any, next: any) => any;
 export declare const getRoomsQuerySchema: Joi.ObjectSchema<any>;
+export declare const codeExecutionSchema: Joi.ObjectSchema<any>;
 //# sourceMappingURL=validation.d.ts.map
