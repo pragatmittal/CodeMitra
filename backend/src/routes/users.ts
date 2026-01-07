@@ -22,6 +22,12 @@ userRoutes.get('/profile',
         avatar: true,
         createdAt: true,
         updatedAt: true,
+        _count: {
+          select: {
+            ownedRooms: true,
+            roomUsers: true
+          }
+        }
       }
     });
 
