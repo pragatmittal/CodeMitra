@@ -43,6 +43,22 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    message: 'CodeMitra Backend API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/healthz',
+      auth: '/api/auth',
+      users: '/api/users',
+      rooms: '/api/rooms',
+      code: '/api/code'
+    }
+  });
+});
+
 // Health check endpoint
 app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
