@@ -233,7 +233,7 @@ codeRoutes.post('/execute',
     const room = await prisma.room.findFirst({
       where: {
         id: roomId,
-        users: {
+        participants: {
           some: {
             userId: userId
           }
