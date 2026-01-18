@@ -260,12 +260,9 @@ codeRoutes.post('/execute',
           roomId,
           language,
           code,
-          success: result.success,
-          output: result.output || '',
-          error: result.error || '',
-          executionTime: result.executionTime || 0,
-          memoryUsed: result.memoryUsed || 0,
-          compilationTime: result.compilationTime || 0,
+          output: result.output || null,
+          error: result.error || null,
+          executionTime: result.executionTime || null,
           status: result.status
         }
       });
@@ -304,7 +301,7 @@ codeRoutes.get('/history/:roomId',
     const room = await prisma.room.findFirst({
       where: {
         id: roomId,
-        users: {
+        participants: {
           some: {
             userId: userId
           }
