@@ -1,4 +1,5 @@
 # Multi-stage build for TypeScript compilation
+# This Dockerfile works when build context is the backend directory (for Render)
 FROM node:18-alpine AS builder
 
 # Install dependencies for native modules and OpenSSL
@@ -8,8 +9,8 @@ RUN apk add --no-cache python3 make g++ openssl openssl-dev
 WORKDIR /app
 
 # Copy package files
-COPY backend/package*.json ./
-COPY backend/tsconfig.json ./
+COPY package*.json ./
+COPY tsconfig.json ./
 
 # Install ALL dependencies (including devDependencies for TypeScript)
 RUN npm install
@@ -17,11 +18,11 @@ RUN npm install
 # Install tsconfig-paths and tsc-alias for path resolution
 RUN npm install --save-dev tsconfig-paths tsc-alias
 
-# Copy prisma schema 
+# Copy prisma schema (from backend/prisma)
 COPY prisma ./prisma
 
 # Copy source code
-COPY backend/src ./src
+COPY src ./src
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -52,7 +53,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy package files
-COPY backend/package*.json ./
+COPY package*.json ./
 
 # Install only production dependencies
 RUN npm install --only=production
@@ -75,12 +76,12 @@ RUN chown -R backend:nodejs /app
 # Switch to non-root user
 USER backend
 
-# Expose port
-EXPOSE 8000
+# Expose port (Render uses PORT env var, default to 10000)
+EXPOSE 10000
 
-# Health check
+# Health check (use PORT env var)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/healthz || exit 1
+  CMD curl -f http://localhost:${PORT:-10000}/healthz || exit 1
 
 # Start the application
 CMD ["npm", "start"]
