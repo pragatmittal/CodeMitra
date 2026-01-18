@@ -15,7 +15,7 @@ let subClient: Redis | null = null;
 let redisAvailable = false;
 
 // Only try to connect to Redis if explicitly configured
-if (process.env.REDIS_URL && process.env.REDIS_URL !== 'redis://localhost:6379') {
+if (process.env.REDIS_URL && process.env.REDIS_URL !== 'redis://localhost:6379' && !process.env.REDIS_URL.includes('codemitra-redis')) {
   try {
     pubClient = new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: 1,
@@ -459,6 +459,17 @@ export const setupSocketIO = (server: any) => {
   // Periodic reconciliation heartbeat - every 30 seconds
   setInterval(async () => {
     try {
+      // Check if database tables exist before querying
+      try {
+        await prisma.$queryRaw`SELECT 1 FROM rooms LIMIT 1`;
+      } catch (dbError: any) {
+        // If tables don't exist, skip heartbeat (migrations not run yet)
+        if (dbError.code === 'P2021' || dbError.message?.includes('does not exist')) {
+          return; // Silently skip - migrations need to be run
+        }
+        throw dbError; // Re-throw other database errors
+      }
+      
       console.log('[HEARTBEAT] Starting periodic reconciliation...');
       
       // Get all active rooms
@@ -501,8 +512,11 @@ export const setupSocketIO = (server: any) => {
 
         console.log(`[HEARTBEAT] Room ${room.id} reconciled: ${participantCount} participants`);
       }
-    } catch (error) {
-      console.error('[HEARTBEAT] Reconciliation error:', error);
+    } catch (error: any) {
+      // Only log non-table-missing errors
+      if (error.code !== 'P2021' && !error.message?.includes('does not exist')) {
+        console.error('[HEARTBEAT] Reconciliation error:', error);
+      }
     }
   }, 30000); // 30 seconds
 
