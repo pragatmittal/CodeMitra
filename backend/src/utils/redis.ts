@@ -50,6 +50,11 @@ export const redisClient = REDIS_URL ? new Redis(REDIS_URL, {
 });
 
 redisClient.on('error', (err) => {
+  // Only log connection errors once, not repeatedly
+  if (err.message.includes('ENOTFOUND') || err.message.includes('ECONNREFUSED') || err.message.includes('Connection is closed')) {
+    // Suppress repeated connection errors - they're expected if Redis is not available
+    return;
+  }
   console.error('Redis Client Error:', err.message);
   console.log('⚠️  Continuing without Redis. Some features may be limited.');
 });
