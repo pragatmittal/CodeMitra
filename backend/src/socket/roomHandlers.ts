@@ -30,16 +30,20 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       roomUsers.get(roomId)!.add(userId);
       console.log(`👥 User ${socket.user?.name} added to roomUsers Map for room ${roomId}`);
 
-      // Get room data with current users
+      // Get room data with current participants
       const room = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-          users: {
+          participants: {
+            where: { status: 'active' },
             include: {
               user: {
                 select: { id: true, name: true, email: true, avatar: true }
               }
             }
+          },
+          creator: {
+            select: { id: true, name: true, avatar: true }
           }
         }
       });
@@ -72,13 +76,12 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       });
 
       // Broadcast updated user list to ALL users in the room (including the new user)
-      const updatedUsers = room.users.map(ru => ({
-        id: ru.user.id,
-        name: ru.user.name,
-        email: ru.user.email,
-        avatar: ru.user.avatar,
-        role: ru.role,
-        joinedAt: ru.joinedAt
+      const updatedUsers = room.participants.map(p => ({
+        id: p.user.id,
+        name: p.user.name,
+        email: p.user.email,
+        avatar: p.user.avatar,
+        joinedAt: p.joinedAt
       }));
 
       io.to(roomId).emit('room:users', {
@@ -124,7 +127,8 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       const room = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-          users: {
+          participants: {
+            where: { status: 'active' },
             include: {
               user: {
                 select: { id: true, name: true, email: true, avatar: true }
@@ -135,13 +139,12 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       });
 
       if (room) {
-        const updatedUsers = room.users.map(ru => ({
-          id: ru.user.id,
-          name: ru.user.name,
-          email: ru.user.email,
-          avatar: ru.user.avatar,
-          role: ru.role,
-          joinedAt: ru.joinedAt
+        const updatedUsers = room.participants.map(p => ({
+          id: p.user.id,
+          name: p.user.name,
+          email: p.user.email,
+          avatar: p.user.avatar,
+          joinedAt: p.joinedAt
         }));
 
         io.to(roomId).emit('room:users', {
@@ -174,7 +177,8 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       const room = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-          users: {
+          participants: {
+            where: { status: 'active' },
             include: {
               user: {
                 select: { id: true, name: true, email: true, avatar: true }
@@ -189,13 +193,12 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
         return;
       }
 
-      const users = room.users.map(ru => ({
-        id: ru.user.id,
-        name: ru.user.name,
-        email: ru.user.email,
-        avatar: ru.user.avatar,
-        role: ru.role,
-        joinedAt: ru.joinedAt
+      const users = room.participants.map(p => ({
+        id: p.user.id,
+        name: p.user.name,
+        email: p.user.email,
+        avatar: p.user.avatar,
+        joinedAt: p.joinedAt
       }));
 
       socket.emit('room:users', {
@@ -225,10 +228,11 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       const room = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-          owner: {
+          creator: {
             select: { id: true, name: true, avatar: true }
           },
-          users: {
+          participants: {
+            where: { status: 'active' },
             include: {
               user: {
                 select: { id: true, name: true, avatar: true }
@@ -248,11 +252,11 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
           id: room.id,
           name: room.name,
           description: room.description,
-          isPublic: room.isPublic,
-          maxUsers: room.maxUsers,
+          visibility: room.visibility,
+          maxCapacity: room.maxCapacity,
           language: room.language,
-          owner: room.owner,
-          userCount: room.users.length,
+          creator: room.creator,
+          participantCount: room.participants.length,
           createdAt: room.createdAt,
           updatedAt: room.updatedAt
         },
@@ -280,8 +284,8 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
         return;
       }
 
-      if (room.ownerId !== userId) {
-        socket.emit('room:error', { message: 'Only the room owner can update settings' });
+      if (room.creatorId !== userId) {
+        socket.emit('room:error', { message: 'Only the room creator can update settings' });
         return;
       }
 
@@ -290,7 +294,8 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
         where: { id: roomId },
         data: settings,
         include: {
-          users: {
+          participants: {
+            where: { status: 'active' },
             include: {
               user: {
                 select: { id: true, name: true, email: true, avatar: true }
@@ -320,12 +325,9 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       const { roomId, targetUserId } = data;
       const userId = socket.userId!;
 
-      // Check if user has permission to kick
+      // Check if user has permission to kick (only creator can kick)
       const room = await prisma.room.findUnique({
-        where: { id: roomId },
-        include: {
-          users: true
-        }
+        where: { id: roomId }
       });
 
       if (!room) {
@@ -333,14 +335,14 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
         return;
       }
 
-      const currentUser = room.users.find((u: { userId: string; role: string; }) => u.userId === userId);
-      if (!currentUser || (currentUser.role !== 'owner' && currentUser.role !== 'admin')) {
+      // Only room creator can kick users
+      if (room.creatorId !== userId) {
         socket.emit('room:error', { message: 'You do not have permission to kick users' });
         return;
       }
 
       // Remove user from room
-      await prisma.roomUser.deleteMany({
+      await prisma.roomParticipant.deleteMany({
         where: {
           userId: targetUserId,
           roomId
@@ -359,7 +361,8 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       const updatedRoom = await prisma.room.findUnique({
         where: { id: roomId },
         include: {
-          users: {
+          participants: {
+            where: { status: 'active' },
             include: {
               user: {
                 select: { id: true, name: true, email: true, avatar: true }
@@ -370,13 +373,12 @@ export const setupRoomHandlers = (io: Server, socket: AuthenticatedSocket, isUse
       });
 
       if (updatedRoom) {
-        const updatedUsers = updatedRoom.users.map(ru => ({
-          id: ru.user.id,
-          name: ru.user.name,
-          email: ru.user.email,
-          avatar: ru.user.avatar,
-          role: ru.role,
-          joinedAt: ru.joinedAt
+        const updatedUsers = updatedRoom.participants.map(p => ({
+          id: p.user.id,
+          name: p.user.name,
+          email: p.user.email,
+          avatar: p.user.avatar,
+          joinedAt: p.joinedAt
         }));
 
         io.to(roomId).emit('room:users', {
