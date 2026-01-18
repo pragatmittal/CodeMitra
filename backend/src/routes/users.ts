@@ -24,8 +24,8 @@ userRoutes.get('/profile',
         updatedAt: true,
         _count: {
           select: {
-            ownedRooms: true,
-            roomUsers: true
+            createdRooms: true,
+            roomParticipants: true
           }
         }
       }
