@@ -37,8 +37,10 @@ export const createRoomSchema = Joi.object({
   description: Joi.string().max(500).allow('').optional().messages({
     'string.max': 'Description cannot exceed 500 characters',
   }),
-  isPublic: Joi.boolean().default(true),
-  password: Joi.alternatives().conditional('isPublic', {
+  visibility: Joi.boolean().default(true),
+  // Support both field names for backward compatibility
+  isPublic: Joi.boolean().optional(),
+  password: Joi.alternatives().conditional(Joi.ref('visibility'), {
     is: false,
     then: Joi.string().min(4).max(50).required().messages({
       'string.min': 'Room password must be at least 4 characters long',
@@ -47,7 +49,12 @@ export const createRoomSchema = Joi.object({
     }),
     otherwise: Joi.string().allow('', null).optional()
   }),
-  maxUsers: Joi.number().integer().min(2).max(50).default(10).messages({
+  maxCapacity: Joi.number().integer().min(2).max(50).default(10).messages({
+    'number.min': 'Room must allow at least 2 users',
+    'number.max': 'Room cannot exceed 50 users',
+  }),
+  // Support both field names for backward compatibility
+  maxUsers: Joi.number().integer().min(2).max(50).optional().messages({
     'number.min': 'Room must allow at least 2 users',
     'number.max': 'Room cannot exceed 50 users',
   }),
@@ -73,7 +80,14 @@ export const updateRoomSchema = Joi.object({
     'string.min': 'Room password must be at least 4 characters long',
     'string.max': 'Room password cannot exceed 50 characters',
   }),
+  visibility: Joi.boolean().optional(),
+  // Support both field names for backward compatibility
   isPublic: Joi.boolean().optional(),
+  maxCapacity: Joi.number().integer().min(2).max(50).optional().messages({
+    'number.min': 'Room must allow at least 2 users',
+    'number.max': 'Room cannot exceed 50 users',
+  }),
+  // Support both field names for backward compatibility
   maxUsers: Joi.number().integer().min(2).max(50).optional().messages({
     'number.min': 'Room must allow at least 2 users',
     'number.max': 'Room cannot exceed 50 users',
@@ -201,6 +215,8 @@ export const getRoomsQuerySchema = Joi.object({
     'java',
     'cpp'
   ).optional(),
+  visibility: Joi.boolean().optional(),
+  // Support both field names for backward compatibility
   isPublic: Joi.boolean().optional(),
 });
 
