@@ -9,6 +9,7 @@ import { authRoutes } from './routes/auth';
 import { userRoutes } from './routes/users';
 import { roomRoutes } from './routes/rooms';
 import { codeRoutes } from './routes/code';
+import { migrateRoutes } from './routes/migrate';
 import { errorHandler } from './middleware/errorHandler';
 import { setupSocketIO } from './socket';
 import { prisma } from './utils/prisma';
@@ -69,6 +70,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/code', codeRoutes);
+app.use('/api/migrate', migrateRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
