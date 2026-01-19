@@ -49,10 +49,22 @@ export const errorHandler = (
         message = 'Foreign key constraint failed';
         code = 'BAD_REQUEST';
         break;
+      case 'P2021':
+      case 'P1001':
+        statusCode = 503;
+        message = 'Database connection error. Please try again.';
+        code = 'DATABASE_CONNECTION_ERROR';
+        break;
       default:
-        statusCode = 400;
-        message = 'Database error';
+        statusCode = 500;
+        message = errAny.message || 'Database error';
         code = 'DATABASE_ERROR';
+        // Log full error for debugging
+        console.error('Prisma Error Details:', {
+          code: errAny.code,
+          meta: errAny.meta,
+          message: errAny.message
+        });
     }
   }
 
