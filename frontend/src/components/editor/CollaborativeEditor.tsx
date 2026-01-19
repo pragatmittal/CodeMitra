@@ -97,9 +97,9 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
         if (data.event === 'user_joined') {
           toast.success(`${data.user.name} joined the room (${data.count} users)`);
         } else if (data.event === 'user_left') {
-          toast.(`${data.user.name} left the room (${data.count} users)`);
+          toast(`${data.user.name} left the room (${data.count} users)`);
         } else if (data.event === 'user_disconnected') {
-          toast.info(`${data.user.name} disconnected (${data.count} users)`);
+          toast(`${data.user.name} disconnected (${data.count} users)`);
         }
         // No toast for heartbeat_reconciliation
       });
