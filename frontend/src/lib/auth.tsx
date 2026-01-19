@@ -27,7 +27,38 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+// Get backend URL - check both build-time and runtime
+const getBackendUrl = () => {
+  // In browser, check window location for runtime override
+  if (typeof window !== 'undefined') {
+    // Check if there's a runtime config
+    const runtimeUrl = (window as any).__BACKEND_URL__;
+    if (runtimeUrl) {
+      console.log('Using runtime backend URL:', runtimeUrl);
+      return runtimeUrl;
+    }
+  }
+  
+  // Use environment variable (baked at build time)
+  const envUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (envUrl && envUrl !== 'http://localhost:8000') {
+    console.log('Using environment backend URL:', envUrl);
+    return envUrl;
+  }
+  
+  // Fallback - but log warning
+  console.warn('⚠️ WARNING: Using fallback localhost:8000. NEXT_PUBLIC_BACKEND_URL not set correctly!');
+  console.warn('Current NEXT_PUBLIC_BACKEND_URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+  return 'http://localhost:8000';
+};
+
+const API_BASE_URL = getBackendUrl();
+
+// Log the URL being used (for debugging)
+if (typeof window !== 'undefined') {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+  console.log('🔗 NEXT_PUBLIC_BACKEND_URL env:', process.env.NEXT_PUBLIC_BACKEND_URL);
+}
 
 // Configure axios defaults
 axios.defaults.baseURL = API_BASE_URL;
