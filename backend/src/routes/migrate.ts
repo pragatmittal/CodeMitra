@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import { prisma } from '../utils/prisma';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 const execAsync = promisify(exec);
 const migrateRoutes = express.Router();
@@ -30,6 +32,25 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
       cwd: process.cwd(),
       env: { ...process.env }
     });
+
+    // Run the column name fix SQL if it exists
+    console.log('Running column name fix SQL...');
+    try {
+      const fixSqlPath = join(process.cwd(), 'fix_column_names.sql');
+      const fixSql = await readFile(fixSqlPath, 'utf-8');
+      
+      // Execute the SQL directly using Prisma
+      await prisma.$executeRawUnsafe(fixSql);
+      console.log('Column name fix SQL executed successfully');
+    } catch (fixError: any) {
+      // If file doesn't exist or already fixed, that's okay
+      if (fixError.code === 'ENOENT') {
+        console.log('fix_column_names.sql not found, skipping (may already be fixed)');
+      } else {
+        console.warn('Column fix SQL warning:', fixError.message);
+        // Continue anyway - might already be fixed
+      }
+    }
 
     // Then regenerate Prisma client to ensure it's up to date
     console.log('Regenerating Prisma client...');
