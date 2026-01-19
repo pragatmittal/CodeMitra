@@ -65,6 +65,32 @@ app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Database test endpoint (no auth required)
+app.get('/api/test/db', async (req, res) => {
+  try {
+    // Test database connection and tables
+    const roomCount = await prisma.room.count();
+    const userCount = await prisma.user.count();
+    
+    res.json({
+      success: true,
+      message: 'Database connection successful',
+      data: {
+        rooms: roomCount,
+        users: userCount,
+        database: 'connected',
+        tables: 'exist'
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Database connection failed',
+      details: error.message
+    });
+  }
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
