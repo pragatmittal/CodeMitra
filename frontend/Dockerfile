@@ -18,10 +18,15 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Set environment variables for build
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV NODE_ENV production
-ENV NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+# Render automatically passes environment variables to Docker builds
+# These will be available during npm run build
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 ENV DISABLE_SOCKET_CONNECTION=true
+
+# Note: NEXT_PUBLIC_* variables should be set in Render's environment variables
+# They will be automatically available during the build process
+# Do NOT hardcode them here - let Render pass them in
 
 # Build the app with standalone output
 RUN npm run build
