@@ -8,7 +8,6 @@ import toast from 'react-hot-toast';
 interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
-<<<<<<< HEAD
   joinRoom: (roomId: string) => void;
   leaveRoom: (roomId: string) => void;
   updateCode: (roomId: string, code: string, language?: string) => void;
@@ -16,10 +15,8 @@ interface SocketContextType {
   updateInput: (roomId: string, input: string) => void;
   updateCursor: (roomId: string, position: { line: number; column: number }) => void;
   updateSelection: (roomId: string, selection: any) => void;
-=======
   connectSocket: () => void;
   disconnectSocket: () => void;
->>>>>>> 300446fa250e6096c7b559e094fa5460547acb15
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -75,180 +72,178 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       toast.error(`Real-time connection error: ${err.message}`);
     });
 
-<<<<<<< HEAD
-      // Room event listeners
-      newSocket.on('room:joined', (data) => {
-        console.log('Joined room:', data);
-        toast.success(`Joined room: ${data.room.name}`);
-      });
+    // Room event listeners
+    newSocket.on('room:joined', (data) => {
+      console.log('Joined room:', data);
+      toast.success(`Joined room: ${data.room.name}`);
+    });
 
-      newSocket.on('room:left', (data) => {
-        console.log('Left room:', data);
-        toast.success('Left room');
-      });
+    newSocket.on('room:left', (data) => {
+      console.log('Left room:', data);
+      toast.success('Left room');
+    });
 
-      newSocket.on('room:user-joined', (data) => {
-        console.log('User joined room:', data);
-        toast.success(`${data.user.name} joined the room`);
-      });
+    newSocket.on('room:user-joined', (data) => {
+      console.log('User joined room:', data);
+      toast.success(`${data.user.name} joined the room`);
+    });
 
-      newSocket.on('room:user-left', (data) => {
-        console.log('User left room:', data);
-        toast(`${data.userName} left the room`);
-      });
+    newSocket.on('room:user-left', (data) => {
+      console.log('User left room:', data);
+      toast(`${data.userName} left the room`);
+    });
 
-      newSocket.on('room:error', (data) => {
-        console.error('Room error:', data);
-        toast.error(data.message || 'Room error occurred');
-      });
+    newSocket.on('room:error', (data) => {
+      console.error('Room error:', data);
+      toast.error(data.message || 'Room error occurred');
+    });
 
-      // CRITICAL FIX: Listen for room users updates
-      newSocket.on('room:users', (data) => {
-        console.log('Room users updated:', data);
-        // This will be handled by the room component
-      });
+    // CRITICAL FIX: Listen for room users updates
+    newSocket.on('room:users', (data) => {
+      console.log('Room users updated:', data);
+      // This will be handled by the room component
+    });
 
-      // Code event listeners
-      newSocket.on('code:updated', (data) => {
-        console.log('Code updated:', data);
-        // This will be handled by the code editor component
-      });
+    // Code event listeners
+    newSocket.on('code:updated', (data) => {
+      console.log('Code updated:', data);
+      // This will be handled by the code editor component
+    });
 
-      newSocket.on('code:language-changed', (data) => {
-        console.log('Language changed:', data);
-        // This will be handled by the code editor component
-      });
+    newSocket.on('code:language-changed', (data) => {
+      console.log('Language changed:', data);
+      // This will be handled by the code editor component
+    });
 
-      newSocket.on('code:input-updated', (data) => {
-        console.log('Input updated:', data);
-        // This will be handled by the code editor component
-      });
+    newSocket.on('code:input-updated', (data) => {
+      console.log('Input updated:', data);
+      // This will be handled by the code editor component
+    });
 
-      newSocket.on('code:execution-started', (data) => {
-        console.log('Code execution started:', data);
-        toast('Code execution started...');
-      });
+    newSocket.on('code:execution-started', (data) => {
+      console.log('Code execution started:', data);
+      toast('Code execution started...');
+    });
 
-      newSocket.on('code:execution-result', (data) => {
-        console.log('Code execution result:', data);
-        // This will be handled by the code editor component
-      });
+    newSocket.on('code:execution-result', (data) => {
+      console.log('Code execution result:', data);
+      // This will be handled by the code editor component
+    });
 
-      newSocket.on('code:cursor-updated', (data) => {
-        console.log('Cursor updated:', data);
-        // This will be handled by the code editor component
-      });
+    newSocket.on('code:cursor-updated', (data) => {
+      console.log('Cursor updated:', data);
+      // This will be handled by the code editor component
+    });
 
-      newSocket.on('code:selection-updated', (data) => {
-        console.log('Selection updated:', data);
-        // This will be handled by the code editor component
-      });
+    newSocket.on('code:selection-updated', (data) => {
+      console.log('Selection updated:', data);
+      // This will be handled by the code editor component
+    });
 
-      newSocket.on('code:error', (data) => {
-        console.error('Code error:', data);
-        toast.error(data.message || 'Code error occurred');
-      });
+    newSocket.on('code:error', (data) => {
+      console.error('Code error:', data);
+      toast.error(data.message || 'Code error occurred');
+    });
 
-      // Chat event listeners
-      newSocket.on('chat:message-received', (data) => {
-        console.log('Message received:', data);
-        // This will be handled by the chat component
-      });
+    // Chat event listeners
+    newSocket.on('chat:message-received', (data) => {
+      console.log('Message received:', data);
+      // This will be handled by the chat component
+    });
 
-      newSocket.on('chat:user-typing', (data) => {
-        console.log('User typing:', data);
-        // This will be handled by the chat component
-      });
+    newSocket.on('chat:user-typing', (data) => {
+      console.log('User typing:', data);
+      // This will be handled by the chat component
+    });
 
-      newSocket.on('chat:user-stopped-typing', (data) => {
-        console.log('User stopped typing:', data);
-        // This will be handled by the chat component
-      });
+    newSocket.on('chat:user-stopped-typing', (data) => {
+      console.log('User stopped typing:', data);
+      // This will be handled by the chat component
+    });
 
-      newSocket.on('chat:error', (data) => {
-        console.error('Chat error:', data);
-        toast.error(data.message || 'Chat error occurred');
-      });
+    newSocket.on('chat:error', (data) => {
+      console.error('Chat error:', data);
+      toast.error(data.message || 'Chat error occurred');
+    });
 
-      // Video event listeners
-      newSocket.on('video:joined-call', (data) => {
-        console.log('Joined video call:', data);
-        toast.success('Joined video call');
-      });
+    // Video event listeners
+    newSocket.on('video:joined-call', (data) => {
+      console.log('Joined video call:', data);
+      toast.success('Joined video call');
+    });
 
-      newSocket.on('video:left-call', (data) => {
-        console.log('Left video call:', data);
-        toast('Left video call');
-      });
+    newSocket.on('video:left-call', (data) => {
+      console.log('Left video call:', data);
+      toast('Left video call');
+    });
 
-      newSocket.on('video:user-joined', (data) => {
-        console.log('User joined video call:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:user-joined', (data) => {
+      console.log('User joined video call:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:user-left', (data) => {
-        console.log('User left video call:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:user-left', (data) => {
+      console.log('User left video call:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:offer-received', (data) => {
-        console.log('Video offer received:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:offer-received', (data) => {
+      console.log('Video offer received:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:answer-received', (data) => {
-        console.log('Video answer received:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:answer-received', (data) => {
+      console.log('Video answer received:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:ice-candidate-received', (data) => {
-        console.log('ICE candidate received:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:ice-candidate-received', (data) => {
+      console.log('ICE candidate received:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:user-mute-changed', (data) => {
-        console.log('User mute changed:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:user-mute-changed', (data) => {
+      console.log('User mute changed:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:user-video-changed', (data) => {
-        console.log('User video changed:', data);
-        // This will be handled by the video component
-      });
+    newSocket.on('video:user-video-changed', (data) => {
+      console.log('User video changed:', data);
+      // This will be handled by the video component
+    });
 
-      newSocket.on('video:screen-share-started', (data) => {
-        console.log('Screen share started:', data);
-        toast(`${data.userName} started screen sharing`);
-      });
+    newSocket.on('video:screen-share-started', (data) => {
+      console.log('Screen share started:', data);
+      toast(`${data.userName} started screen sharing`);
+    });
 
-      newSocket.on('video:screen-share-stopped', (data) => {
-        console.log('Screen share stopped:', data);
-        toast(`${data.userName} stopped screen sharing`);
-      });
+    newSocket.on('video:screen-share-stopped', (data) => {
+      console.log('Screen share stopped:', data);
+      toast(`${data.userName} stopped screen sharing`);
+    });
 
-      newSocket.on('video:error', (data) => {
-        console.error('Video error:', data);
-        toast.error(data.message || 'Video error occurred');
-=======
+    newSocket.on('video:error', (data) => {
+      console.error('Video error:', data);
+      toast.error(data.message || 'Video error occurred');
+    });
+
     newSocket.on('error', (error) => {
       console.error('Socket error:', error);
       toast.error(`Server error: ${error.message || 'Unknown error'}`);
->>>>>>> 300446fa250e6096c7b559e094fa5460547acb15
-      });
+    });
 
-      setSocket(newSocket);
+    setSocket(newSocket);
   }, [token, logout, socket]);
 
   const disconnectSocket = useCallback(() => {
-      if (socket) {
+    if (socket) {
       console.log('Disconnecting socket...');
       socket.disconnect();
-        setSocket(null);
-        setIsConnected(false);
-      }
+      setSocket(null);
+      setIsConnected(false);
+    }
   }, [socket]);
 
-<<<<<<< HEAD
   // Room methods
   const joinRoom = (roomId: string) => {
     if (socket && user) {
@@ -269,7 +264,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.emit('room:leave', { roomId });
     }
   };
-
 
   // Code methods
   const updateCode = (roomId: string, code: string, language?: string) => {
@@ -302,6 +296,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    if (user && token && !socket) {
+      connectSocket();
+    }
+
+    // Clean up on component unmount
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [user, token, socket, connectSocket]);
 
   const value: SocketContextType = {
     socket,
@@ -313,29 +319,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     updateInput,
     updateCursor,
     updateSelection,
+    connectSocket,
+    disconnectSocket,
   };
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
-=======
-  useEffect(() => {
-    if (user && token && !socket) {
-      connectSocket();
-    }
-
-    // Clean up on component unmount
-    return () => {
-    if (socket) {
-        socket.disconnect();
-      }
-    };
-  }, [user, token, socket, connectSocket]);
-
-  return (
-    <SocketContext.Provider value={{ socket, isConnected, connectSocket, disconnectSocket }}>
-      {children}
-    </SocketContext.Provider>
-  );
->>>>>>> 300446fa250e6096c7b559e094fa5460547acb15
 }
 
 export function useSocket() {
