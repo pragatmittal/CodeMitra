@@ -22,6 +22,18 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
 
     console.log('Starting database migrations...');
 
+    // First, regenerate Prisma client to ensure it's up to date
+    console.log('Regenerating Prisma client...');
+    try {
+      const generateResult = await execAsync('npx prisma generate', {
+        cwd: process.cwd(),
+        env: { ...process.env }
+      });
+      console.log('Prisma client regenerated:', generateResult.stdout);
+    } catch (generateError: any) {
+      console.warn('Prisma generate warning:', generateError.stdout || generateError.message);
+    }
+
     // Run Prisma migrations
     const { stdout, stderr } = await execAsync('npx prisma migrate deploy', {
       cwd: process.cwd(),
