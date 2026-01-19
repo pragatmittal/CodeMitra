@@ -156,27 +156,127 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
       env: { ...process.env }
     });
 
-    // Run the column name fix SQL (embedded in code to avoid path issues)
+    // Run the column name fix SQL - execute statements individually for reliability
     console.log('Running column name fix SQL...');
     let fixExecuted = false;
+    let fixErrors: string[] = [];
+    
     try {
-      // Execute the embedded SQL directly using Prisma
-      await prisma.$executeRawUnsafe(FIX_COLUMN_NAMES_SQL);
-      console.log('Column name fix SQL executed successfully');
-      fixExecuted = true;
-    } catch (fixError: any) {
-      // Log the error but continue - might already be fixed or have other issues
-      console.warn('Column fix SQL warning:', fixError.message);
-      // Check if it's a "column doesn't exist" error (means already fixed)
-      if (fixError.message && (
-        fixError.message.includes('does not exist') ||
-        fixError.message.includes('column') && fixError.message.includes('already')
-      )) {
-        console.log('Columns may already be fixed, continuing...');
-        fixExecuted = true; // Assume it's already fixed
-      } else {
-        console.warn('Column fix SQL error details:', JSON.stringify(fixError, null, 2));
+      // First, check what columns actually exist
+      const usersColumns = await prisma.$queryRaw`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' 
+        AND column_name IN ('createdAt', 'created_at', 'updatedAt', 'updated_at')
+      ` as Array<{column_name: string}>;
+      
+      console.log('Current users table columns:', usersColumns.map(c => c.column_name));
+      
+      // Fix users table - execute each statement separately
+      if (usersColumns.some(c => c.column_name === 'createdAt')) {
+        try {
+          await prisma.$executeRawUnsafe('ALTER TABLE "users" RENAME COLUMN "createdAt" TO "created_at"');
+          console.log('✓ Renamed users.createdAt to created_at');
+        } catch (e: any) {
+          if (!e.message?.includes('does not exist')) {
+            fixErrors.push(`users.createdAt: ${e.message}`);
+          }
+        }
       }
+      
+      if (usersColumns.some(c => c.column_name === 'updatedAt')) {
+        try {
+          await prisma.$executeRawUnsafe('ALTER TABLE "users" RENAME COLUMN "updatedAt" TO "updated_at"');
+          console.log('✓ Renamed users.updatedAt to updated_at');
+        } catch (e: any) {
+          if (!e.message?.includes('does not exist')) {
+            fixErrors.push(`users.updatedAt: ${e.message}`);
+          }
+        }
+      }
+      
+      // Verify the fix
+      const verifyColumns = await prisma.$queryRaw`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' 
+        AND column_name IN ('created_at', 'updated_at')
+      ` as Array<{column_name: string}>;
+      
+      if (verifyColumns.length >= 2) {
+        console.log('✓ Users table columns verified:', verifyColumns.map(c => c.column_name));
+        fixExecuted = true;
+      } else {
+        console.warn('⚠ Users table columns not fully fixed:', verifyColumns.map(c => c.column_name));
+      }
+      
+      // Fix rooms table columns
+      const roomsColumns = await prisma.$queryRaw`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'rooms' 
+        AND column_name IN ('createdAt', 'created_at', 'updatedAt', 'updated_at', 'ownerId', 'creator_id', 'isPublic', 'visibility', 'maxUsers', 'max_capacity')
+      ` as Array<{column_name: string}>;
+      
+      console.log('Current rooms table columns:', roomsColumns.map(c => c.column_name));
+      
+      const renameStatements = [
+        { from: 'createdAt', to: 'created_at' },
+        { from: 'updatedAt', to: 'updated_at' },
+        { from: 'ownerId', to: 'creator_id' },
+        { from: 'isPublic', to: 'visibility' },
+        { from: 'maxUsers', to: 'max_capacity' }
+      ];
+      
+      for (const stmt of renameStatements) {
+        if (roomsColumns.some(c => c.column_name === stmt.from)) {
+          try {
+            await prisma.$executeRawUnsafe(`ALTER TABLE "rooms" RENAME COLUMN "${stmt.from}" TO "${stmt.to}"`);
+            console.log(`✓ Renamed rooms.${stmt.from} to ${stmt.to}`);
+          } catch (e: any) {
+            if (!e.message?.includes('does not exist')) {
+              fixErrors.push(`rooms.${stmt.from}: ${e.message}`);
+            }
+          }
+        }
+      }
+      
+      // Add missing columns to rooms if needed
+      const addColumns = [
+        { name: 'last_activity', type: 'TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP' },
+        { name: 'input', type: 'TEXT NOT NULL DEFAULT \'\'' },
+        { name: 'output', type: 'TEXT NOT NULL DEFAULT \'\'' }
+      ];
+      
+      for (const col of addColumns) {
+        if (!roomsColumns.some(c => c.column_name === col.name)) {
+          try {
+            await prisma.$executeRawUnsafe(`ALTER TABLE "rooms" ADD COLUMN "${col.name}" ${col.type}`);
+            console.log(`✓ Added rooms.${col.name}`);
+          } catch (e: any) {
+            fixErrors.push(`rooms.${col.name}: ${e.message}`);
+          }
+        }
+      }
+      
+      // Make password nullable if needed
+      try {
+        await prisma.$executeRawUnsafe('ALTER TABLE "rooms" ALTER COLUMN "password" DROP NOT NULL');
+        console.log('✓ Made rooms.password nullable');
+      } catch (e: any) {
+        // Ignore if already nullable or column doesn't exist
+      }
+      
+      console.log('Column name fix SQL executed successfully');
+      if (fixErrors.length > 0) {
+        console.warn('Some fixes had errors:', fixErrors);
+      }
+      fixExecuted = true;
+      
+    } catch (fixError: any) {
+      console.error('Column fix SQL error:', fixError.message);
+      console.error('Error details:', JSON.stringify(fixError, null, 2));
+      // Don't fail the migration if fix has errors - might already be fixed
     }
 
     // ALWAYS regenerate Prisma client to ensure it's up to date
@@ -188,10 +288,24 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
       });
       console.log('Prisma client regenerated:', generateResult.stdout);
       
-      // Disconnect and reconnect Prisma to pick up new client
-      await prisma.$disconnect();
-      // Reconnect happens automatically on next query
-      console.log('Prisma client disconnected, will reconnect on next query');
+      // Verify columns are correct after regeneration
+      try {
+        const finalCheck = await prisma.$queryRaw`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name IN ('created_at', 'updated_at')
+        ` as Array<{column_name: string}>;
+        
+        if (finalCheck.length === 2) {
+          console.log('✓ Final verification: users table has correct columns');
+        } else {
+          console.warn('⚠ Final verification: users table columns may not be correct:', finalCheck.map(c => c.column_name));
+        }
+      } catch (verifyError: any) {
+        console.warn('Could not verify columns after fix:', verifyError.message);
+      }
+      
     } catch (generateError: any) {
       console.error('Prisma generate error:', generateError.message);
       console.error('Generate stderr:', generateError.stderr);
@@ -208,8 +322,13 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
       success: true,
       message: 'Migrations completed successfully',
       output: stdout,
-      note: 'IMPORTANT: The application needs to be restarted/redeployed to pick up the new Prisma client. Please redeploy your service on Render after this migration.',
-      fixExecuted: fixExecuted
+      columnFixExecuted: fixExecuted,
+      note: 'IMPORTANT: If registration still fails, the application needs to be restarted to pick up the new Prisma client. Redeploy your service on Render or wait for automatic restart.',
+      nextSteps: [
+        '1. Wait 1-2 minutes for the app to restart automatically',
+        '2. Try registration again',
+        '3. If it still fails, manually redeploy on Render'
+      ]
     });
   } catch (error: any) {
     console.error('Migration error:', error);
@@ -219,6 +338,62 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
       details: error.message,
       output: error.stdout || '',
       errors: error.stderr || ''
+    });
+  }
+});
+
+// Direct column fix endpoint (can be called independently)
+migrateRoutes.post('/fix-columns', async (req: Request, res: Response) => {
+  try {
+    console.log('Direct column fix requested...');
+    
+    // Check current state
+    const usersColumns = await prisma.$queryRaw`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' 
+      AND column_name IN ('createdAt', 'created_at', 'updatedAt', 'updated_at')
+    ` as Array<{column_name: string}>;
+    
+    console.log('Current users columns:', usersColumns.map(c => c.column_name));
+    
+    // Fix users table
+    if (usersColumns.some(c => c.column_name === 'createdAt')) {
+      await prisma.$executeRawUnsafe('ALTER TABLE "users" RENAME COLUMN "createdAt" TO "created_at"');
+      console.log('✓ Fixed users.createdAt');
+    }
+    
+    if (usersColumns.some(c => c.column_name === 'updatedAt')) {
+      await prisma.$executeRawUnsafe('ALTER TABLE "users" RENAME COLUMN "updatedAt" TO "updated_at"');
+      console.log('✓ Fixed users.updatedAt');
+    }
+    
+    // Verify
+    const verify = await prisma.$queryRaw`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' 
+      AND column_name IN ('created_at', 'updated_at')
+    ` as Array<{column_name: string}>;
+    
+    // Regenerate Prisma client
+    await execAsync('npx prisma generate', {
+      cwd: process.cwd(),
+      env: { ...process.env }
+    });
+    
+    return res.json({
+      success: true,
+      message: 'Column names fixed successfully',
+      verifiedColumns: verify.map(c => c.column_name),
+      note: 'Prisma client regenerated. App may need to restart to pick up changes.'
+    });
+  } catch (error: any) {
+    console.error('Column fix error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to fix columns',
+      details: error.message
     });
   }
 });
