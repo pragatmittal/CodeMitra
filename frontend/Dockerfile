@@ -17,16 +17,24 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Accept build arguments (Render passes env vars as build args)
+ARG NEXT_PUBLIC_BACKEND_URL
+ARG NEXT_PUBLIC_FRONTEND_URL
+ARG NEXT_PUBLIC_WS_URL
+
 # Set environment variables for build
-# Render automatically passes environment variables to Docker builds
-# These will be available during npm run build
+# Convert ARG to ENV so they're available during npm run build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV DISABLE_SOCKET_CONNECTION=true
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+ENV NEXT_PUBLIC_FRONTEND_URL=${NEXT_PUBLIC_FRONTEND_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
 
-# Note: NEXT_PUBLIC_* variables should be set in Render's environment variables
-# They will be automatically available during the build process
-# Do NOT hardcode them here - let Render pass them in
+# Log the values being used (for debugging)
+RUN echo "Building with NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}"
+RUN echo "Building with NEXT_PUBLIC_FRONTEND_URL=${NEXT_PUBLIC_FRONTEND_URL}"
+RUN echo "Building with NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}"
 
 # Build the app with standalone output
 RUN npm run build
