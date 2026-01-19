@@ -28,22 +28,35 @@ authRoutes.options('*', cors(authCorsOptions));
 authRoutes.post('/register', validate(registerSchema), asyncHandler(async (req: Request, res: Response) => {
     const { email, password, name } = req.body;
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-        return res.status(409).json({ success: false, error: 'Email already registered' });
+    try {
+      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (existingUser) {
+          return res.status(409).json({ success: false, error: 'Email already registered' });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const user = await prisma.user.create({
+          data: {
+              email,
+              password: hashedPassword,
+              name,
+          },
+          select: {
+              id: true,
+              email: true,
+              name: true,
+              avatar: true,
+              createdAt: true,
+          }
+      });
+
+      const token = generateToken(user);
+      return res.status(201).json({ success: true, token, user });
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      // Re-throw to let error handler process it
+      throw error;
     }
-
-    const hashedPassword = await hashPassword(password);
-    const user = await prisma.user.create({
-        data: {
-            email,
-            password: hashedPassword,
-            name,
-        },
-    });
-
-    const token = generateToken(user);
-    return res.status(201).json({ success: true, token, user });
 }));
 
 // User login
