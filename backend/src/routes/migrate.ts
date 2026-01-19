@@ -267,6 +267,85 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
         // Ignore if already nullable or column doesn't exist
       }
       
+      // CRITICAL: Check if room_participants table exists, create if missing
+      const tablesCheck = await prisma.$queryRaw`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name IN ('room_users', 'room_participants')
+      ` as Array<{table_name: string}>;
+      
+      const hasRoomUsers = tablesCheck.some(t => t.table_name === 'room_users');
+      const hasRoomParticipants = tablesCheck.some(t => t.table_name === 'room_participants');
+      
+      if (!hasRoomUsers && !hasRoomParticipants) {
+        // Table doesn't exist at all - create it
+        console.log('⚠️ room_participants table does not exist. Creating it...');
+        try {
+          await prisma.$executeRawUnsafe(`
+            CREATE TABLE IF NOT EXISTS "room_participants" (
+              "id" TEXT NOT NULL,
+              "room_id" TEXT NOT NULL,
+              "user_id" TEXT NOT NULL,
+              "cursor_line" INTEGER NOT NULL DEFAULT 0,
+              "cursor_column" INTEGER NOT NULL DEFAULT 0,
+              "status" TEXT NOT NULL DEFAULT 'active',
+              "joined_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "last_activity" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              CONSTRAINT "room_participants_pkey" PRIMARY KEY ("id"),
+              CONSTRAINT "room_participants_room_id_fkey" FOREIGN KEY ("room_id") REFERENCES "rooms"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+              CONSTRAINT "room_participants_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+              CONSTRAINT "room_participants_room_id_user_id_key" UNIQUE ("room_id", "user_id")
+            )
+          `);
+          console.log('✓ Created room_participants table');
+        } catch (e: any) {
+          console.error('Failed to create room_participants table:', e.message);
+          fixErrors.push(`room_participants creation: ${e.message}`);
+        }
+      } else if (hasRoomUsers && !hasRoomParticipants) {
+        // Rename room_users to room_participants
+        console.log('Renaming room_users to room_participants...');
+        try {
+          await prisma.$executeRawUnsafe('ALTER TABLE "room_users" RENAME TO "room_participants"');
+          console.log('✓ Renamed room_users to room_participants');
+          
+          // Fix column names
+          const participantColumns = await prisma.$queryRaw`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'room_participants'
+          ` as Array<{column_name: string}>;
+          
+          if (participantColumns.some(c => c.column_name === 'userId')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" RENAME COLUMN "userId" TO "user_id"');
+          }
+          if (participantColumns.some(c => c.column_name === 'roomId')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" RENAME COLUMN "roomId" TO "room_id"');
+          }
+          if (participantColumns.some(c => c.column_name === 'joinedAt')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" RENAME COLUMN "joinedAt" TO "joined_at"');
+          }
+          
+          // Add missing columns
+          if (!participantColumns.some(c => c.column_name === 'cursor_line')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" ADD COLUMN "cursor_line" INTEGER NOT NULL DEFAULT 0');
+          }
+          if (!participantColumns.some(c => c.column_name === 'cursor_column')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" ADD COLUMN "cursor_column" INTEGER NOT NULL DEFAULT 0');
+          }
+          if (!participantColumns.some(c => c.column_name === 'status')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" ADD COLUMN "status" TEXT NOT NULL DEFAULT \'active\'');
+          }
+          if (!participantColumns.some(c => c.column_name === 'last_activity')) {
+            await prisma.$executeRawUnsafe('ALTER TABLE "room_participants" ADD COLUMN "last_activity" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP');
+          }
+        } catch (e: any) {
+          console.error('Failed to rename/fix room_participants:', e.message);
+          fixErrors.push(`room_participants rename: ${e.message}`);
+        }
+      }
+      
       console.log('Column name fix SQL executed successfully');
       if (fixErrors.length > 0) {
         console.warn('Some fixes had errors:', fixErrors);
@@ -342,39 +421,63 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
   }
 });
 
-// Direct column fix endpoint (can be called independently)
-migrateRoutes.post('/fix-columns', async (req: Request, res: Response) => {
+// Direct fix endpoint - creates missing tables and fixes columns
+migrateRoutes.post('/fix-tables', async (req: Request, res: Response) => {
   try {
-    console.log('Direct column fix requested...');
+    console.log('Direct table fix requested...');
     
-    // Check current state
-    const usersColumns = await prisma.$queryRaw`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'users' 
-      AND column_name IN ('createdAt', 'created_at', 'updatedAt', 'updated_at')
-    ` as Array<{column_name: string}>;
+    // Check if room_participants table exists
+    const tablesCheck = await prisma.$queryRaw`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('room_users', 'room_participants')
+    ` as Array<{table_name: string}>;
     
-    console.log('Current users columns:', usersColumns.map(c => c.column_name));
+    const hasRoomUsers = tablesCheck.some(t => t.table_name === 'room_users');
+    const hasRoomParticipants = tablesCheck.some(t => t.table_name === 'room_participants');
     
-    // Fix users table
-    if (usersColumns.some(c => c.column_name === 'createdAt')) {
-      await prisma.$executeRawUnsafe('ALTER TABLE "users" RENAME COLUMN "createdAt" TO "created_at"');
-      console.log('✓ Fixed users.createdAt');
+    if (!hasRoomUsers && !hasRoomParticipants) {
+      // Create the table
+      console.log('Creating room_participants table...');
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "room_participants" (
+          "id" TEXT NOT NULL,
+          "room_id" TEXT NOT NULL,
+          "user_id" TEXT NOT NULL,
+          "cursor_line" INTEGER NOT NULL DEFAULT 0,
+          "cursor_column" INTEGER NOT NULL DEFAULT 0,
+          "status" TEXT NOT NULL DEFAULT 'active',
+          "joined_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "last_activity" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "room_participants_pkey" PRIMARY KEY ("id"),
+          CONSTRAINT "room_participants_room_id_fkey" FOREIGN KEY ("room_id") REFERENCES "rooms"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT "room_participants_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT "room_participants_room_id_user_id_key" UNIQUE ("room_id", "user_id")
+        )
+      `);
+      console.log('✓ Created room_participants table');
+    } else if (hasRoomUsers && !hasRoomParticipants) {
+      // Rename existing table
+      await prisma.$executeRawUnsafe('ALTER TABLE "room_users" RENAME TO "room_participants"');
+      console.log('✓ Renamed room_users to room_participants');
     }
     
-    if (usersColumns.some(c => c.column_name === 'updatedAt')) {
-      await prisma.$executeRawUnsafe('ALTER TABLE "users" RENAME COLUMN "updatedAt" TO "updated_at"');
-      console.log('✓ Fixed users.updatedAt');
-    }
+    // Check if code_executions table exists
+    const codeTablesCheck = await prisma.$queryRaw`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name IN ('execution_logs', 'code_executions')
+    ` as Array<{table_name: string}>;
     
-    // Verify
-    const verify = await prisma.$queryRaw`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'users' 
-      AND column_name IN ('created_at', 'updated_at')
-    ` as Array<{column_name: string}>;
+    const hasExecutionLogs = codeTablesCheck.some(t => t.table_name === 'execution_logs');
+    const hasCodeExecutions = codeTablesCheck.some(t => t.table_name === 'code_executions');
+    
+    if (hasExecutionLogs && !hasCodeExecutions) {
+      await prisma.$executeRawUnsafe('ALTER TABLE "execution_logs" RENAME TO "code_executions"');
+      console.log('✓ Renamed execution_logs to code_executions');
+    }
     
     // Regenerate Prisma client
     await execAsync('npx prisma generate', {
@@ -384,15 +487,15 @@ migrateRoutes.post('/fix-columns', async (req: Request, res: Response) => {
     
     return res.json({
       success: true,
-      message: 'Column names fixed successfully',
-      verifiedColumns: verify.map(c => c.column_name),
-      note: 'Prisma client regenerated. App may need to restart to pick up changes.'
+      message: 'Tables fixed successfully',
+      tablesCreated: !hasRoomParticipants,
+      note: 'Prisma client regenerated. Try registration again.'
     });
   } catch (error: any) {
-    console.error('Column fix error:', error);
+    console.error('Table fix error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to fix columns',
+      error: 'Failed to fix tables',
       details: error.message
     });
   }
