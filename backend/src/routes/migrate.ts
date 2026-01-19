@@ -6,23 +6,32 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 const migrateRoutes = express.Router();
 
-// Migration endpoint - SECURE THIS IN PRODUCTION!
+// Migration endpoint - Allow without token for now (can be secured later)
 migrateRoutes.post('/run', async (req: Request, res: Response) => {
   try {
-    // SECURITY: Add a secret token check in production
+    // SECURITY: Token check is optional - only enforce if explicitly set
     const secretToken = process.env.MIGRATION_SECRET_TOKEN;
     const providedToken = req.headers['x-migration-token'] || req.body.token;
 
-    if (secretToken && providedToken !== secretToken) {
+    // Only require token if it's explicitly set in environment
+    if (secretToken && secretToken.trim() !== '' && providedToken !== secretToken) {
       return res.status(401).json({
         success: false,
-        error: 'Unauthorized. Invalid migration token.'
+        error: 'Unauthorized. Invalid migration token.',
+        hint: 'Set MIGRATION_SECRET_TOKEN in environment or provide token in header/body'
       });
     }
 
     console.log('Starting database migrations...');
 
-    // First, regenerate Prisma client to ensure it's up to date
+    // Run Prisma migrations first
+    console.log('Running Prisma migrations...');
+    const { stdout, stderr } = await execAsync('npx prisma migrate deploy', {
+      cwd: process.cwd(),
+      env: { ...process.env }
+    });
+
+    // Then regenerate Prisma client to ensure it's up to date
     console.log('Regenerating Prisma client...');
     try {
       const generateResult = await execAsync('npx prisma generate', {
@@ -32,13 +41,8 @@ migrateRoutes.post('/run', async (req: Request, res: Response) => {
       console.log('Prisma client regenerated:', generateResult.stdout);
     } catch (generateError: any) {
       console.warn('Prisma generate warning:', generateError.stdout || generateError.message);
+      // Still continue even if generate has warnings
     }
-
-    // Run Prisma migrations
-    const { stdout, stderr } = await execAsync('npx prisma migrate deploy', {
-      cwd: process.cwd(),
-      env: { ...process.env }
-    });
 
     console.log('Migration output:', stdout);
     if (stderr) {
