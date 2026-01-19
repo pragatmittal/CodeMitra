@@ -464,8 +464,9 @@ export const setupSocketIO = (server: any) => {
         await prisma.$queryRaw`SELECT 1 FROM rooms LIMIT 1`;
       } catch (dbError: any) {
         // If tables don't exist, skip heartbeat (migrations not run yet)
-        if (dbError.code === 'P2021' || dbError.message?.includes('does not exist')) {
-          return; // Silently skip - migrations need to be run
+        if (dbError.code === 'P2021' || dbError.code === '42P01' || dbError.message?.includes('does not exist') || dbError.message?.includes('relation')) {
+          // Silently skip - migrations need to be run via /api/migrate/run endpoint
+          return;
         }
         throw dbError; // Re-throw other database errors
       }
