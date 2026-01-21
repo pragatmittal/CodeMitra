@@ -6,6 +6,8 @@ import { validate, codeExecutionSchema } from '../utils/validation';
 import { Queue, QueueEvents } from 'bullmq';
 import { redisClient, bullMQRedisConfig } from '../utils/redis';
 import { v4 as uuidv4 } from 'uuid';
+import { executeCode as executeCodeDirect } from '../utils/codeExecutor';
+import { executeCode as executeCodeDirect } from '../utils/codeExecutor';
 
 const codeRoutes = express.Router();
 
@@ -506,7 +508,77 @@ codeRoutes.post('/execute',
       const config = LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS];
       console.log(`[CODE:EXECUTE] Executing code with config:`, { timeout: config.timeout, memoryLimit: config.memoryLimit });
       
-      const result = await executeCodeWithQueue(code, language, input, config);
+      // Try queue first, fallback to direct execution if worker unavailable
+      let result: CodeExecutionResult;
+      
+      if (codeExecutionQueue) {
+        try {
+          // Try queue with timeout to detect if worker is processing
+          const queuePromise = executeCodeWithQueue(code, language, input, config);
+          const timeoutPromise = new Promise<CodeExecutionResult>((resolve) => {
+            setTimeout(() => {
+              console.log(`[CODE:EXECUTE] Queue timeout - worker not processing, using direct execution`);
+              resolve({
+                success: false,
+                output: '',
+                error: 'TIMEOUT_FALLBACK',
+                executionTime: 0,
+                memoryUsed: 0,
+                compilationTime: 0,
+                status: 'timeout'
+              });
+            }, 8000); // 8 second timeout
+          });
+          
+          result = await Promise.race([queuePromise, timeoutPromise]);
+          
+          // If timeout, use direct execution
+          if (result.error === 'TIMEOUT_FALLBACK' || result.status === 'timeout') {
+            console.log(`[CODE:EXECUTE] Using direct execution fallback (worker unavailable)`);
+            const directResult = await executeCodeDirect(code, language, roomId, userId);
+            result = {
+              success: directResult.status === 'success',
+              output: directResult.output || '',
+              error: directResult.error || '',
+              executionTime: directResult.executionTime || 0,
+              memoryUsed: 0,
+              compilationTime: directResult.compilationTime || 0,
+              status: directResult.status === 'success' ? 'success' : 
+                      directResult.status === 'compilation_error' ? 'compilation_error' :
+                      directResult.status === 'timeout' ? 'timeout' : 'runtime_error'
+            };
+          }
+        } catch (queueError: any) {
+          console.error(`[CODE:EXECUTE] Queue execution failed, using direct execution:`, queueError.message);
+          const directResult = await executeCodeDirect(code, language, roomId, userId);
+          result = {
+            success: directResult.status === 'success',
+            output: directResult.output || '',
+            error: directResult.error || '',
+            executionTime: directResult.executionTime || 0,
+            memoryUsed: 0,
+            compilationTime: directResult.compilationTime || 0,
+            status: directResult.status === 'success' ? 'success' : 
+                    directResult.status === 'compilation_error' ? 'compilation_error' :
+                    directResult.status === 'timeout' ? 'timeout' : 'runtime_error'
+          };
+        }
+      } else {
+        // No queue, use direct execution
+        console.log(`[CODE:EXECUTE] Queue not available, using direct execution`);
+        const directResult = await executeCodeDirect(code, language, roomId, userId);
+        result = {
+          success: directResult.status === 'success',
+          output: directResult.output || '',
+          error: directResult.error || '',
+          executionTime: directResult.executionTime || 0,
+          memoryUsed: 0,
+          compilationTime: directResult.compilationTime || 0,
+          status: directResult.status === 'success' ? 'success' : 
+                  directResult.status === 'compilation_error' ? 'compilation_error' :
+                  directResult.status === 'timeout' ? 'timeout' : 'runtime_error'
+        };
+      }
       
       console.log(`[CODE:EXECUTE] Execution result:`, { 
         success: result.success, 
