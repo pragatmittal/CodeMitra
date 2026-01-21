@@ -9,24 +9,34 @@ import { v4 as uuidv4 } from 'uuid';
 
 const codeRoutes = express.Router();
 
-// Create BullMQ queue for code execution
-const codeExecutionQueue = new Queue('code-execution', {
-  connection: bullMQRedisConfig,
-  defaultJobOptions: {
-    removeOnComplete: 10,
-    removeOnFail: 50,
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-  },
-});
+// Create BullMQ queue for code execution with error handling
+let codeExecutionQueue: Queue | null = null;
+let queueEvents: QueueEvents | null = null;
 
-// Create QueueEvents for listening to job completion
-const queueEvents = new QueueEvents('code-execution', {
-  connection: bullMQRedisConfig,
-});
+try {
+  codeExecutionQueue = new Queue('code-execution', {
+    connection: bullMQRedisConfig,
+    defaultJobOptions: {
+      removeOnComplete: 10,
+      removeOnFail: 50,
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+    },
+  });
+
+  // Create QueueEvents for listening to job completion
+  queueEvents = new QueueEvents('code-execution', {
+    connection: bullMQRedisConfig,
+  });
+  
+  console.log('✅ BullMQ queue initialized successfully');
+} catch (error: any) {
+  console.error('⚠️  Failed to initialize BullMQ queue:', error.message);
+  console.log('⚠️  Code execution will be disabled until Redis is configured');
+}
 
 interface CodeExecutionRequest {
   code: string;
@@ -88,6 +98,20 @@ const LANGUAGE_CONFIGS = {
  * Execute code using BullMQ queue and Docker containers
  */
 async function executeCodeWithQueue(code: string, language: string, input: string, config: any): Promise<CodeExecutionResult> {
+  // Check if queue is available
+  if (!codeExecutionQueue) {
+    console.error('Code execution queue is not available. Redis may not be configured.');
+    return {
+      success: false,
+      output: '',
+      error: 'Code execution service is not available. Please ensure Redis is configured and the worker is running.',
+      executionTime: 0,
+      memoryUsed: 0,
+      compilationTime: 0,
+      status: 'system_error'
+    };
+  }
+
   const executionId = uuidv4();
   
   try {
@@ -127,7 +151,13 @@ async function executeCodeWithQueue(code: string, language: string, input: strin
           if (jobState === 'completed') {
             // Get result from Redis using executionId
             const resultKey = `execution-result:${executionId}`;
-            const resultStr = await redisClient.get(resultKey);
+            let resultStr: string | null = null;
+            try {
+              resultStr = await redisClient.get(resultKey);
+            } catch (redisError: any) {
+              console.warn(`Failed to get result from Redis: ${redisError.message}`);
+              // Continue with fallback to job.returnvalue
+            }
             let result = null;
             
             if (resultStr) {
