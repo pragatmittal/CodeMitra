@@ -7,7 +7,6 @@ import { Queue, QueueEvents } from 'bullmq';
 import { redisClient, bullMQRedisConfig } from '../utils/redis';
 import { v4 as uuidv4 } from 'uuid';
 import { executeCode as executeCodeDirect } from '../utils/codeExecutor';
-import { executeCode as executeCodeDirect } from '../utils/codeExecutor';
 
 const codeRoutes = express.Router();
 
