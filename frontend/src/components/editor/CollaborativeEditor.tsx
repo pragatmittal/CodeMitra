@@ -260,22 +260,62 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
       });
 
       const data = await response.json();
-      if (data.success) {
-        setExecutionResult(data.data);
+      console.log('[EXECUTE] Response received:', data);
+      console.log('[EXECUTE] Response status:', response.status);
+      
+      // Handle response - check both success flag and status code
+      if (data.success || (response.ok && (data.output !== undefined || data.error !== undefined))) {
+        // Backend returns result directly, not wrapped in data property
+        const result = {
+          output: data.output || '',
+          error: data.error || '',
+          executionTime: data.executionTime || 0,
+          status: data.status || (data.error ? 'error' : 'success'),
+          compilationTime: data.compilationTime,
+          executionTimeOnly: data.executionTimeOnly
+        };
+        
+        console.log('[EXECUTE] Setting execution result:', result);
+        setExecutionResult(result);
         
         // Broadcast execution result
         if (socket && isConnected) {
           socket.emit('code:execution', {
             roomId,
-            result: data.data
+            result: result
           });
         }
+        
+        // Show success toast if there's output
+        if (result.output) {
+          toast.success('Code executed successfully!');
+        } else if (result.error) {
+          toast.error('Code execution completed with errors');
+        } else {
+          toast.success('Code executed (no output)');
+        }
       } else {
-        toast.error(data.error || 'Code execution failed');
+        console.error('[EXECUTE] Execution failed:', data);
+        const errorMsg = data.error || data.details || 'Code execution failed';
+        toast.error(errorMsg);
+        // Still set result to show error
+        setExecutionResult({
+          output: data.output || '',
+          error: errorMsg,
+          executionTime: data.executionTime || 0,
+          status: 'error'
+        });
       }
-    } catch (error) {
-      console.error('Code execution error:', error);
-      toast.error('Code execution failed');
+    } catch (error: any) {
+      console.error('[EXECUTE] Code execution error:', error);
+      toast.error('Code execution failed: ' + (error.message || 'Unknown error'));
+      // Set error result to display
+      setExecutionResult({
+        output: '',
+        error: error.message || 'Code execution failed',
+        executionTime: 0,
+        status: 'error'
+      });
     } finally {
       setIsExecuting(false);
     }
@@ -521,19 +561,19 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
                   </div>
                 </div>
 
-                {executionResult.output && (
+                {(executionResult.output || executionResult.output === '') && (
                   <div>
                     <h5 className="font-medium text-sm mb-2">Output:</h5>
-                    <pre className="bg-gray-100 dark:bg-gray-800 p-3 rounded text-sm overflow-auto">
-                      {executionResult.output}
+                    <pre className="bg-gray-100 dark:bg-gray-800 p-3 rounded text-sm overflow-auto min-h-[50px]">
+                      {executionResult.output || '(no output)'}
                     </pre>
                   </div>
                 )}
 
                 {executionResult.error && (
                   <div>
-                    <h5 className="font-medium text-sm mb-2 text-red-600">Error:</h5>
-                    <pre className="bg-red-50 dark:bg-red-900/20 p-3 rounded text-sm overflow-auto text-red-600">
+                    <h5 className="font-medium text-sm mb-2 text-red-600 dark:text-red-400">Error:</h5>
+                    <pre className="bg-red-50 dark:bg-red-900/20 p-3 rounded text-sm overflow-auto text-red-600 dark:text-red-400 min-h-[50px]">
                       {executionResult.error}
                     </pre>
                   </div>
