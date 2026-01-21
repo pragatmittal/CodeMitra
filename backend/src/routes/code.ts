@@ -13,29 +13,103 @@ const codeRoutes = express.Router();
 let codeExecutionQueue: Queue | null = null;
 let queueEvents: QueueEvents | null = null;
 
-try {
-  codeExecutionQueue = new Queue('code-execution', {
-    connection: bullMQRedisConfig,
-    defaultJobOptions: {
-      removeOnComplete: 10,
-      removeOnFail: 50,
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000,
-      },
-    },
-  });
+// Initialize queue with connection retry
+async function initializeQueue() {
+  if (!process.env.REDIS_URL) {
+    console.log('⚠️  REDIS_URL not set. Code execution queue will not be initialized.');
+    return;
+  }
 
-  // Create QueueEvents for listening to job completion
-  queueEvents = new QueueEvents('code-execution', {
-    connection: bullMQRedisConfig,
-  });
-  
-  console.log('✅ BullMQ queue initialized successfully');
-} catch (error: any) {
-  console.error('⚠️  Failed to initialize BullMQ queue:', error.message);
-  console.log('⚠️  Code execution will be disabled until Redis is configured');
+  try {
+    // First, verify Redis connection
+    try {
+      await redisClient.ping();
+      console.log('✅ Redis connection verified before queue initialization');
+    } catch (redisError: any) {
+      console.error('⚠️  Redis connection check failed:', redisError.message);
+      // Try to connect
+      if (redisClient.status !== 'ready') {
+        await redisClient.connect();
+        console.log('✅ Redis connected successfully');
+      }
+    }
+
+    // Create queue with connection options that ensure connection
+    codeExecutionQueue = new Queue('code-execution', {
+      connection: {
+        ...bullMQRedisConfig,
+        lazyConnect: false, // Connect immediately
+        retryStrategy: (times: number) => {
+          const delay = Math.min(times * 50, 2000);
+          console.log(`[QUEUE] Retrying Redis connection (attempt ${times})...`);
+          return delay;
+        },
+        maxRetriesPerRequest: null,
+      },
+      defaultJobOptions: {
+        removeOnComplete: 10,
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    });
+
+    // Create QueueEvents for listening to job completion
+    queueEvents = new QueueEvents('code-execution', {
+      connection: {
+        ...bullMQRedisConfig,
+        lazyConnect: false,
+        retryStrategy: (times: number) => {
+          const delay = Math.min(times * 50, 2000);
+          return delay;
+        },
+        maxRetriesPerRequest: null,
+      },
+    });
+    
+    console.log('✅ BullMQ queue initialized successfully');
+  } catch (error: any) {
+    console.error('⚠️  Failed to initialize BullMQ queue:', error.message);
+    console.log('⚠️  Code execution will be disabled until Redis is configured');
+    codeExecutionQueue = null;
+    queueEvents = null;
+  }
+}
+
+// Initialize queue on module load
+initializeQueue().catch(err => {
+  console.error('Failed to initialize queue:', err);
+});
+
+// Helper function to ensure queue is ready
+async function ensureQueueReady(): Promise<boolean> {
+  if (!codeExecutionQueue) {
+    console.log('[QUEUE] Queue not initialized, attempting to initialize...');
+    await initializeQueue();
+    if (!codeExecutionQueue) {
+      return false;
+    }
+  }
+
+  // Check if Redis is connected
+  try {
+    await redisClient.ping();
+  } catch (error: any) {
+    console.error('[QUEUE] Redis not connected, attempting to connect...');
+    try {
+      if (redisClient.status !== 'ready') {
+        await redisClient.connect();
+      }
+    } catch (connectError: any) {
+      console.error('[QUEUE] Failed to connect Redis:', connectError.message);
+      return false;
+    }
+  }
+
+  return true;
 }
 
 interface CodeExecutionRequest {
@@ -98,13 +172,14 @@ const LANGUAGE_CONFIGS = {
  * Execute code using BullMQ queue and Docker containers
  */
 async function executeCodeWithQueue(code: string, language: string, input: string, config: any): Promise<CodeExecutionResult> {
-  // Check if queue is available
-  if (!codeExecutionQueue) {
+  // Ensure queue is ready before proceeding
+  const queueReady = await ensureQueueReady();
+  if (!queueReady || !codeExecutionQueue) {
     console.error('[EXECUTE:QUEUE] Queue is not available. Redis may not be configured.');
     return {
       success: false,
       output: '',
-      error: 'Code execution service is not available. Please ensure Redis is configured and the worker is running.',
+      error: 'Code execution service is not available. Please ensure Redis is configured and running.',
       executionTime: 0,
       memoryUsed: 0,
       compilationTime: 0,
@@ -116,30 +191,104 @@ async function executeCodeWithQueue(code: string, language: string, input: strin
   console.log(`[EXECUTE:QUEUE] Starting execution ${executionId} for language ${language}`);
   
   try {
-    // Add job to queue with error handling
+
+    // Add job to queue with error handling and retry
     let job;
-    try {
-      job = await codeExecutionQueue.add('execute', {
-        executionId,
-        language,
-        code,
-        input,
-        timeout: config.timeout,
-        memoryLimit: config.memoryLimit,
-        timestamp: Date.now()
-      }, {
-        removeOnComplete: false, // Keep completed jobs so we can get results
-        removeOnFail: false,     // Keep failed jobs so we can get error details
-        attempts: 1,
-        delay: 0
-      });
-      console.log(`[EXECUTE:QUEUE] Job ${job.id} added to queue successfully`);
-    } catch (queueError: any) {
-      console.error(`[EXECUTE:QUEUE] Failed to add job to queue:`, queueError);
+    let retries = 0;
+    const maxRetries = 3;
+    
+    while (retries < maxRetries) {
+      try {
+        job = await codeExecutionQueue.add('execute', {
+          executionId,
+          language,
+          code,
+          input,
+          timeout: config.timeout,
+          memoryLimit: config.memoryLimit,
+          timestamp: Date.now()
+        }, {
+          removeOnComplete: false, // Keep completed jobs so we can get results
+          removeOnFail: false,     // Keep failed jobs so we can get error details
+          attempts: 1,
+          delay: 0
+        });
+        console.log(`[EXECUTE:QUEUE] Job ${job.id} added to queue successfully`);
+        break; // Success, exit retry loop
+      } catch (queueError: any) {
+        retries++;
+        const errorMsg = queueError.message || 'Unknown error';
+        console.error(`[EXECUTE:QUEUE] Failed to add job to queue (attempt ${retries}/${maxRetries}):`, errorMsg);
+        
+        // If connection is closed, try to reconnect and recreate queue
+        if (errorMsg.includes('Connection is closed') || errorMsg.includes('closed') || errorMsg.includes('ECONNREFUSED')) {
+          if (retries < maxRetries) {
+            console.log(`[EXECUTE:QUEUE] Connection closed, attempting to reconnect and recreate queue...`);
+            try {
+              // Wait a bit before retry
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Try to reconnect Redis
+              if (redisClient.status !== 'ready') {
+                await redisClient.connect();
+              }
+              
+              // Recreate queue with fresh connection
+              console.log(`[EXECUTE:QUEUE] Recreating queue with fresh connection...`);
+              await initializeQueue();
+              
+              if (!codeExecutionQueue) {
+                throw new Error('Failed to recreate queue');
+              }
+              
+              console.log(`[EXECUTE:QUEUE] Queue recreated, retrying job add...`);
+              continue; // Retry
+            } catch (reconnectError: any) {
+              console.error(`[EXECUTE:QUEUE] Reconnection/recreation failed:`, reconnectError.message);
+              if (retries >= maxRetries) {
+                return {
+                  success: false,
+                  output: '',
+                  error: 'Failed to connect to Redis after multiple attempts. Please ensure Redis is configured and running.',
+                  executionTime: 0,
+                  memoryUsed: 0,
+                  compilationTime: 0,
+                  status: 'system_error'
+                };
+              }
+            }
+          } else {
+            // Max retries reached
+            return {
+              success: false,
+              output: '',
+              error: 'Failed to queue code execution after multiple attempts. Redis connection may be unavailable.',
+              executionTime: 0,
+              memoryUsed: 0,
+              compilationTime: 0,
+              status: 'system_error'
+            };
+          }
+        } else {
+          // Other error, don't retry
+          return {
+            success: false,
+            output: '',
+            error: `Failed to queue code execution: ${errorMsg}`,
+            executionTime: 0,
+            memoryUsed: 0,
+            compilationTime: 0,
+            status: 'system_error'
+          };
+        }
+      }
+    }
+    
+    if (!job) {
       return {
         success: false,
         output: '',
-        error: `Failed to queue code execution: ${queueError.message || 'Redis connection error'}`,
+        error: 'Failed to create execution job after retries',
         executionTime: 0,
         memoryUsed: 0,
         compilationTime: 0,
