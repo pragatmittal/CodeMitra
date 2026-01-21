@@ -25,8 +25,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward the request to the backend
-    // In Docker, use the service name; locally, use localhost
-    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
+    // Use NEXT_PUBLIC_BACKEND_URL (available in Next.js API routes)
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://codemitrabackend.onrender.com';
+    
+    console.log(`[API] Proxying code execution to: ${backendUrl}/api/code/execute`);
+    console.log(`[API] Request body:`, { code: code?.substring(0, 50) + '...', language, roomId });
+    
     const response = await fetch(`${backendUrl}/api/code/execute`, {
       method: 'POST',
       headers: {
@@ -36,7 +40,42 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ code, language, roomId }),
     });
 
-    const data = await response.json();
+    console.log(`[API] Backend response status: ${response.status}`);
+    
+    // Handle non-OK responses
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        // If response is not JSON, get text
+        const text = await response.text();
+        console.error(`[API] Backend returned non-JSON error:`, text);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Backend error: ${response.status} ${response.statusText}`,
+            details: text.substring(0, 200)
+          },
+          { status: response.status }
+        );
+      }
+      
+      console.error(`[API] Backend error response:`, errorData);
+      return NextResponse.json(errorData, { status: response.status });
+    }
+
+    // Parse successful response
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      console.error(`[API] Failed to parse backend response:`, e);
+      return NextResponse.json(
+        { success: false, error: 'Invalid response from backend' },
+        { status: 500 }
+      );
+    }
 
     // Return the response from the backend
     return NextResponse.json(data, { status: response.status });
