@@ -110,6 +110,13 @@ export const setupSocketIO = (server: any) => {
       return;
     }
 
+    // Helper function to safely get user data
+    const getUserData = () => ({
+      id: socket.data.user!.id,
+      name: socket.data.user!.name || 'Unknown',
+      avatar: socket.data.user!.avatar || null
+    });
+
     const userName = socket.data.user.name || 'Unknown';
     console.log(`User ${userName} connected: ${socket.id}`);
 
@@ -194,16 +201,13 @@ export const setupSocketIO = (server: any) => {
         });
 
         // Broadcast to ALL users in room (including the joining user) with authoritative count
+        const userData = getUserData();
         io.to(roomId).emit('user:count:update', {
           roomId,
           count: participantCount,
           participants: participantList,
           event: 'user_joined',
-          user: {
-            id: socket.data.user.id,
-            name: socket.data.user.name,
-            avatar: socket.data.user.avatar
-          }
+          user: userData
         });
 
         // Send acknowledgment to joining user
@@ -277,16 +281,13 @@ export const setupSocketIO = (server: any) => {
           console.log(`[ROOM:LEAVE] Room ${roomId} now has ${participantCount} active participants`);
 
           // Broadcast to ALL users in room (including the leaving user) with authoritative count
+          const userData = getUserData();
           io.to(roomId).emit('user:count:update', {
             roomId,
             count: participantCount,
             participants: participantList,
             event: 'user_left',
-            user: {
-              id: socket.data.user.id,
-              name: socket.data.user.name,
-              avatar: socket.data.user.avatar
-            }
+            user: userData
           });
         }
 
@@ -325,10 +326,11 @@ export const setupSocketIO = (server: any) => {
         });
 
         // Broadcast to others in the room
+        const userData = getUserData();
         socket.to(roomId).emit('code:updated', {
           code,
           language: language || 'javascript',
-          user: socket.data.user
+          user: userData
         });
 
         console.log(`Code updated in room ${roomId} by ${socket.data.user.name}`);
@@ -359,12 +361,9 @@ export const setupSocketIO = (server: any) => {
         });
 
         // Broadcast cursor position to others
+        const userData = getUserData();
         socket.to(roomId).emit('cursor:updated', {
-          user: {
-            id: socket.data.user.id,
-            name: socket.data.user.name,
-            avatar: socket.data.user.avatar
-          },
+          user: userData,
           line,
           column
         });
@@ -376,9 +375,12 @@ export const setupSocketIO = (server: any) => {
     // Code execution result
     socket.on('code:execution', (data) => {
       const { roomId, result } = data;
+      // Ensure user object is complete and safe
+      const userData = getUserData();
+      
       socket.to(roomId).emit('code:execution:result', {
         result,
-        user: socket.data.user
+        user: userData
       });
     });
 
@@ -445,16 +447,13 @@ export const setupSocketIO = (server: any) => {
             console.log(`[DISCONNECT] Room ${room.roomId} now has ${participantCount} active participants`);
 
             // Broadcast to ALL users in room with authoritative count
+            const userData = getUserData();
             io.to(room.roomId).emit('user:count:update', {
               roomId: room.roomId,
               count: participantCount,
               participants: participantList,
               event: 'user_disconnected',
-              user: {
-                id: socket.data.user.id,
-                name: socket.data.user.name,
-                avatar: socket.data.user.avatar
-              }
+              user: userData
             });
           }
         }
