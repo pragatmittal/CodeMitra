@@ -36,14 +36,33 @@ if (REDIS_URL) {
 }
 
 // Create Redis client (will only connect if REDIS_URL is set)
-export const redisClient = REDIS_URL ? new Redis(REDIS_URL, {
+// Detect if Upstash (requires TLS) or rediss:// URL
+const isUpstash = REDIS_URL?.includes('.upstash.io') || false;
+const isTLS = REDIS_URL?.startsWith('rediss://') || isUpstash;
+
+// Convert redis:// to rediss:// for Upstash if needed
+let finalRedisUrl = REDIS_URL;
+if (REDIS_URL && isUpstash && REDIS_URL.startsWith('redis://')) {
+  finalRedisUrl = REDIS_URL.replace('redis://', 'rediss://');
+  console.log('✅ Converted redis:// to rediss:// for Upstash TLS connection');
+}
+
+const redisClientOptions: any = {
   enableReadyCheck: false,
   maxRetriesPerRequest: 3,
   lazyConnect: true,
   enableOfflineQueue: false,
   connectTimeout: 10000,
   commandTimeout: 30000,
-}) : new Redis({
+};
+
+// Enable TLS for Upstash or rediss:// URLs
+if (REDIS_URL && isTLS) {
+  redisClientOptions.tls = {};
+  console.log('✅ TLS enabled for Redis client (Upstash/TLS detected)');
+}
+
+export const redisClient = finalRedisUrl ? new Redis(finalRedisUrl, redisClientOptions) : new Redis({
   ...redisConfig,
   lazyConnect: true,
   enableOfflineQueue: false,
@@ -75,7 +94,10 @@ redisClient.on('end', () => {
 export const bullMQRedisConfig = REDIS_URL ? (() => {
   try {
     const redisUrl = new URL(REDIS_URL);
-    return {
+    const isUpstash = redisUrl.hostname.includes('.upstash.io');
+    const isTLS = REDIS_URL.startsWith('rediss://') || isUpstash;
+    
+    const config: any = {
       host: redisUrl.hostname,
       port: parseInt(redisUrl.port) || 6379,
       password: redisUrl.password || undefined,
@@ -83,6 +105,14 @@ export const bullMQRedisConfig = REDIS_URL ? (() => {
       enableReadyCheck: false,
       lazyConnect: true,
     };
+    
+    // Enable TLS for Upstash or rediss:// URLs
+    if (isTLS) {
+      config.tls = {};
+      console.log('✅ TLS enabled for Redis connection (Upstash/TLS detected)');
+    }
+    
+    return config;
   } catch (error) {
     console.error('Failed to parse REDIS_URL for BullMQ:', error);
     return {
