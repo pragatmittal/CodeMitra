@@ -481,14 +481,26 @@ codeRoutes.post('/execute',
         });
       }
 
-      // Check if queue is available
+      // Check if queue is available, if not try to initialize it
       if (!codeExecutionQueue) {
-        console.error(`[CODE:EXECUTE] Queue not available - Redis may not be configured`);
-        return res.status(503).json({
-          success: false,
-          error: 'Code execution service is temporarily unavailable. Please ensure Redis is configured and the worker service is running.',
-          details: 'BullMQ queue is not initialized. This usually means Redis is not configured or the connection failed.'
-        });
+        console.log(`[CODE:EXECUTE] Queue not available, attempting to initialize...`);
+        await initializeQueue();
+        
+        if (!codeExecutionQueue) {
+          console.error(`[CODE:EXECUTE] Queue initialization failed - Redis may not be configured`);
+          console.error(`[CODE:EXECUTE] REDIS_URL is ${process.env.REDIS_URL ? 'set' : 'NOT SET'}`);
+          
+          // Return helpful error message
+          return res.status(503).json({
+            success: false,
+            error: 'Code execution service is temporarily unavailable.',
+            details: process.env.REDIS_URL 
+              ? 'Redis is configured but connection failed. Please check Redis service status.'
+              : 'Redis is not configured. Please set REDIS_URL environment variable to enable code execution.',
+            suggestion: 'To enable code execution, configure Redis (e.g., Upstash) and set REDIS_URL environment variable.'
+          });
+        }
+        console.log(`[CODE:EXECUTE] Queue initialized successfully`);
       }
 
       const config = LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS];
