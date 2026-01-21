@@ -282,20 +282,26 @@ codeRoutes.post('/execute',
       const config = LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS];
       const result = await executeCodeWithQueue(code, language, input, config);
 
-      // Save execution result to database
-      await prisma.codeExecution.create({
-        data: {
-          id: uuidv4(),
-          userId,
-          roomId,
-          language,
-          code,
-          output: result.output || null,
-          error: result.error || null,
-          executionTime: result.executionTime || null,
-          status: result.status
-        }
-      });
+      // Save execution result to database (with error handling)
+      try {
+        await prisma.codeExecution.create({
+          data: {
+            id: uuidv4(),
+            userId,
+            roomId,
+            language,
+            code,
+            output: result.output || null,
+            error: result.error || null,
+            executionTime: result.executionTime || null,
+            status: result.status
+          }
+        });
+      } catch (dbError: any) {
+        // Log database error but don't fail the request
+        console.error('Failed to save execution to database:', dbError);
+        // Continue to return the execution result even if DB save fails
+      }
 
       return res.json({
         success: result.success,
@@ -312,7 +318,7 @@ codeRoutes.post('/execute',
       return res.status(500).json({
         success: false,
         error: 'Code execution failed',
-        details: error.message
+        details: error.message || 'Unknown error occurred'
       });
     }
   })
