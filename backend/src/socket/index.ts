@@ -103,13 +103,21 @@ export const setupSocketIO = (server: any) => {
   });
 
   io.on('connection', (socket) => {
-    console.log(`User ${socket.data.user.name} connected: ${socket.id}`);
+    // Safety check: ensure user is authenticated
+    if (!socket.data.user) {
+      console.error(`Connection rejected: No user data for socket ${socket.id}`);
+      socket.disconnect();
+      return;
+    }
+
+    const userName = socket.data.user.name || 'Unknown';
+    console.log(`User ${userName} connected: ${socket.id}`);
 
     // Join room
     socket.on('room:join', async (data) => {
       try {
         const { roomId } = data;
-        const userId = socket.data.user.id;
+        const userId = socket.data.user!.id;
 
         console.log(`[ROOM:JOIN] User ${socket.data.user.name} (${userId}) attempting to join room ${roomId}`);
 
@@ -516,7 +524,7 @@ export const setupSocketIO = (server: any) => {
     } catch (error: any) {
       // Only log non-table-missing errors
       if (error.code !== 'P2021' && !error.message?.includes('does not exist')) {
-        console.error('[HEARTBEAT] Reconciliation error:', error);
+      console.error('[HEARTBEAT] Reconciliation error:', error);
       }
     }
   }, 30000); // 30 seconds
