@@ -157,12 +157,14 @@ export function NewCollaborativeLayout({
     };
 
     const handleUserJoined = (data: { user: { id: string; name: string; email: string; avatar?: string }; roomId: string; timestamp: string }) => {
-      console.log('User joined room:', data.user.name);
+      const userName = data?.user?.name || 'Someone';
+      console.log('User joined room:', userName);
       // The room:users event will handle the actual user list update
     };
 
     const handleUserLeft = (data: { userId: string; userName: string; roomId: string; timestamp: string }) => {
-      console.log('User left room:', data.userName);
+      const userName = data?.userName || 'Someone';
+      console.log('User left room:', userName);
       // The room:users event will handle the actual user list update
     };
 
