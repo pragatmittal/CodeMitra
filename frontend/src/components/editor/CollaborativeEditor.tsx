@@ -95,11 +95,14 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
         
         // Show toast for user events (not heartbeat)
         if (data.event === 'user_joined') {
-          toast.success(`${data.user.name} joined the room (${data.count} users)`);
+          const userName = data?.user?.name || data?.userName || 'Someone';
+          toast.success(`${userName} joined the room (${data.count || 0} users)`);
         } else if (data.event === 'user_left') {
-          toast(`${data.user.name} left the room (${data.count} users)`);
+          const userName = data?.user?.name || data?.userName || 'Someone';
+          toast(`${userName} left the room (${data.count || 0} users)`);
         } else if (data.event === 'user_disconnected') {
-          toast(`${data.user.name} disconnected (${data.count} users)`);
+          const userName = data?.user?.name || data?.userName || 'Someone';
+          toast(`${userName} disconnected (${data.count || 0} users)`);
         }
         // No toast for heartbeat_reconciliation
       });
@@ -117,11 +120,12 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
 
       // Listen for code updates
       socket.on('code:updated', (data) => {
-        if (data.user.id !== user?.id) {
-          console.log('Code updated by:', data.user.name);
+        if (data?.user?.id && data.user.id !== user?.id) {
+          const userName = data?.user?.name || 'Someone';
+          console.log('Code updated by:', userName);
           setCode(data.code);
           setLanguage(data.language);
-          toast(`Code updated by ${data.user.name}`, { 
+          toast(`Code updated by ${userName}`, { 
             icon: '✍️',
             duration: 2000
           });
@@ -130,8 +134,9 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
 
       // Listen for cursor updates
       socket.on('cursor:updated', (data) => {
-        if (data.user.id !== user?.id) {
-          console.log('Cursor updated by:', data.user.name, 'at line', data.line);
+        if (data?.user?.id && data.user.id !== user?.id) {
+          const userName = data?.user?.name || 'Someone';
+          console.log('Cursor updated by:', userName, 'at line', data.line);
           // You could implement cursor visualization here
         }
       });
@@ -139,8 +144,11 @@ export default function CollaborativeEditor({ roomId }: { roomId: string }) {
       // Listen for code execution results
       socket.on('code:execution:result', (data) => {
         console.log('Code execution result:', data);
-        setExecutionResult(data.result);
-        toast.success(`Code executed by ${data.user.name}`);
+        if (data?.result) {
+          setExecutionResult(data.result);
+        }
+        const userName = data?.user?.name || 'Someone';
+        toast.success(`Code executed by ${userName}`);
       });
 
       // Listen for errors
