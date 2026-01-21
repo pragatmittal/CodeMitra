@@ -100,7 +100,7 @@ const LANGUAGE_CONFIGS = {
 async function executeCodeWithQueue(code: string, language: string, input: string, config: any): Promise<CodeExecutionResult> {
   // Check if queue is available
   if (!codeExecutionQueue) {
-    console.error('Code execution queue is not available. Redis may not be configured.');
+    console.error('[EXECUTE:QUEUE] Queue is not available. Redis may not be configured.');
     return {
       success: false,
       output: '',
@@ -113,29 +113,43 @@ async function executeCodeWithQueue(code: string, language: string, input: strin
   }
 
   const executionId = uuidv4();
+  console.log(`[EXECUTE:QUEUE] Starting execution ${executionId} for language ${language}`);
   
   try {
-    // Add job to queue
-    const job = await codeExecutionQueue.add('execute', {
-      executionId,
-      language,
-      code,
-      input,
-      timeout: config.timeout,
-      memoryLimit: config.memoryLimit,
-      timestamp: Date.now()
-    }, {
-      removeOnComplete: false, // Keep completed jobs so we can get results
-      removeOnFail: false,     // Keep failed jobs so we can get error details
-      attempts: 1,
-      delay: 0
-    });
-
-    console.log(`Code execution job ${job.id} added to queue`);
+    // Add job to queue with error handling
+    let job;
+    try {
+      job = await codeExecutionQueue.add('execute', {
+        executionId,
+        language,
+        code,
+        input,
+        timeout: config.timeout,
+        memoryLimit: config.memoryLimit,
+        timestamp: Date.now()
+      }, {
+        removeOnComplete: false, // Keep completed jobs so we can get results
+        removeOnFail: false,     // Keep failed jobs so we can get error details
+        attempts: 1,
+        delay: 0
+      });
+      console.log(`[EXECUTE:QUEUE] Job ${job.id} added to queue successfully`);
+    } catch (queueError: any) {
+      console.error(`[EXECUTE:QUEUE] Failed to add job to queue:`, queueError);
+      return {
+        success: false,
+        output: '',
+        error: `Failed to queue code execution: ${queueError.message || 'Redis connection error'}`,
+        executionTime: 0,
+        memoryUsed: 0,
+        compilationTime: 0,
+        status: 'system_error'
+      };
+    }
 
     // Wait for job completion using polling approach
     try {
-      console.log(`Waiting for job ${job.id} to complete...`);
+      console.log(`[EXECUTE:QUEUE] Waiting for job ${job.id} to complete...`);
       
       // Simple polling approach with proper result retrieval
       {
@@ -145,8 +159,22 @@ async function executeCodeWithQueue(code: string, language: string, input: strin
         while (attempts < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
           
-          const jobState = await job.getState();
-          console.log(`Job ${job.id} state: ${jobState}`);
+          let jobState;
+          try {
+            jobState = await job.getState();
+            console.log(`[EXECUTE:QUEUE] Job ${job.id} state: ${jobState}`);
+          } catch (stateError: any) {
+            console.error(`[EXECUTE:QUEUE] Failed to get job state:`, stateError);
+            return {
+              success: false,
+              output: '',
+              error: `Failed to check job status: ${stateError.message || 'Redis connection error'}`,
+              executionTime: 0,
+              memoryUsed: 0,
+              compilationTime: 0,
+              status: 'system_error'
+            };
+          }
           
           if (jobState === 'completed') {
             // Get result from Redis using executionId
@@ -154,8 +182,11 @@ async function executeCodeWithQueue(code: string, language: string, input: strin
             let resultStr: string | null = null;
             try {
               resultStr = await redisClient.get(resultKey);
+              if (resultStr) {
+                console.log(`[EXECUTE:QUEUE] Got result from Redis for key: ${resultKey}`);
+              }
             } catch (redisError: any) {
-              console.warn(`Failed to get result from Redis: ${redisError.message}`);
+              console.warn(`[EXECUTE:QUEUE] Failed to get result from Redis: ${redisError.message}`);
               // Continue with fallback to job.returnvalue
             }
             let result = null;
@@ -246,41 +277,82 @@ codeRoutes.post('/execute',
   authenticate, 
   validate(codeExecutionSchema),
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { code, language, input = '', roomId } = req.body;
-    const userId = req.user!.id;
-
-    console.log(`Code execution request: ${language} in room ${roomId} by user ${userId}`);
-
-    // Validate language support
-    if (!LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS]) {
-      return res.status(400).json({
-        success: false,
-        error: `Unsupported language: ${language}. Supported languages: ${Object.keys(LANGUAGE_CONFIGS).join(', ')}`
-      });
-    }
-
-    // Check if user is in the room
-    const room = await prisma.room.findFirst({
-      where: {
-        id: roomId,
-        participants: {
-          some: {
-            userId: userId
-          }
-        }
-      }
-    });
-
-    if (!room) {
-      return res.status(403).json({
-        success: false,
-        error: 'You are not authorized to execute code in this room'
-      });
-    }
-
     try {
+      const { code, language, input = '', roomId } = req.body;
+      const userId = req.user!.id;
+
+      console.log(`[CODE:EXECUTE] Request received: language=${language}, roomId=${roomId}, userId=${userId}`);
+      console.log(`[CODE:EXECUTE] Queue available: ${!!codeExecutionQueue}`);
+
+      // Validate required fields
+      if (!code || !language || !roomId) {
+        console.error(`[CODE:EXECUTE] Missing required fields: code=${!!code}, language=${!!language}, roomId=${!!roomId}`);
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields: code, language, roomId'
+        });
+      }
+
+      // Validate language support
+      if (!LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS]) {
+        console.error(`[CODE:EXECUTE] Unsupported language: ${language}`);
+        return res.status(400).json({
+          success: false,
+          error: `Unsupported language: ${language}. Supported languages: ${Object.keys(LANGUAGE_CONFIGS).join(', ')}`
+        });
+      }
+
+      // Check if user is in the room
+      let room;
+      try {
+        room = await prisma.room.findFirst({
+          where: {
+            id: roomId,
+            participants: {
+              some: {
+                userId: userId
+              }
+            }
+          }
+        });
+      } catch (dbError: any) {
+        console.error(`[CODE:EXECUTE] Database error checking room:`, dbError);
+        return res.status(500).json({
+          success: false,
+          error: 'Database error while checking room access',
+          details: dbError.message
+        });
+      }
+
+      if (!room) {
+        console.error(`[CODE:EXECUTE] User ${userId} not authorized for room ${roomId}`);
+        return res.status(403).json({
+          success: false,
+          error: 'You are not authorized to execute code in this room'
+        });
+      }
+
+      // Check if queue is available
+      if (!codeExecutionQueue) {
+        console.error(`[CODE:EXECUTE] Queue not available - Redis may not be configured`);
+        return res.status(503).json({
+          success: false,
+          error: 'Code execution service is temporarily unavailable. Please ensure Redis is configured and the worker service is running.',
+          details: 'BullMQ queue is not initialized. This usually means Redis is not configured or the connection failed.'
+        });
+      }
+
       const config = LANGUAGE_CONFIGS[language as keyof typeof LANGUAGE_CONFIGS];
+      console.log(`[CODE:EXECUTE] Executing code with config:`, { timeout: config.timeout, memoryLimit: config.memoryLimit });
+      
       const result = await executeCodeWithQueue(code, language, input, config);
+      
+      console.log(`[CODE:EXECUTE] Execution result:`, { 
+        success: result.success, 
+        status: result.status,
+        hasOutput: !!result.output,
+        hasError: !!result.error
+      });
 
       // Save execution result to database (with error handling)
       try {
@@ -297,9 +369,10 @@ codeRoutes.post('/execute',
             status: result.status
           }
         });
+        console.log(`[CODE:EXECUTE] Execution saved to database`);
       } catch (dbError: any) {
         // Log database error but don't fail the request
-        console.error('Failed to save execution to database:', dbError);
+        console.error('[CODE:EXECUTE] Failed to save execution to database:', dbError);
         // Continue to return the execution result even if DB save fails
       }
 
@@ -314,11 +387,13 @@ codeRoutes.post('/execute',
       });
 
     } catch (error: any) {
-      console.error('Code execution error:', error);
+      console.error('[CODE:EXECUTE] Unexpected error:', error);
+      console.error('[CODE:EXECUTE] Error stack:', error.stack);
       return res.status(500).json({
         success: false,
         error: 'Code execution failed',
-        details: error.message || 'Unknown error occurred'
+        details: error.message || 'Unknown error occurred',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
       });
     }
   })
