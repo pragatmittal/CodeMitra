@@ -206,7 +206,7 @@ Kubernetes        - Production orchestration (k8s/)
 #### 1️⃣ User Authentication Flow
 ```mermaid
 sequenceDiagram
-    User->>Frontend: Enter credentials
+    User->>Frontend: Enter the credentials
     Frontend->>Backend API: POST /api/auth/login
     Backend API->>PostgreSQL: Verify user
     PostgreSQL-->>Backend API: User data
