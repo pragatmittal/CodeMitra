@@ -139,7 +139,7 @@ Kubernetes        - Production orchestration (k8s/)
 ### System Architecture
 
 <div align="center">
-  <img src="./docs/diagram-export-24-01-2026-00_31_20.png" alt="CodeMitra Architecture" width="100%" />
+  <img src="./diagram-export-24-01-2026-00_31_20.png" alt="CodeMitra Architecture" width="100%" />
 </div>
 
 *Architecture showing Client Layer, Network Layer (NGINX), Backend Services (scalable), Worker Services, and Data Layer (PostgreSQL + Redis)*
