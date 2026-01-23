@@ -139,7 +139,7 @@ Kubernetes        - Production orchestration (k8s/)
 ### System Architecture
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/pragatmittal/CodeMitra/main/docs/architecture-diagram.png" alt="CodeMitra Architecture" width="100%" />
+  <img src="./docs/diagram-export-24-01-2026-00_31_20.png" alt="CodeMitra Architecture" width="100%" />
 </div>
 
 *Architecture showing Client Layer, Network Layer (NGINX), Backend Services (scalable), Worker Services, and Data Layer (PostgreSQL + Redis)*
@@ -206,13 +206,18 @@ Kubernetes        - Production orchestration (k8s/)
 #### 1️⃣ User Authentication Flow
 ```mermaid
 sequenceDiagram
-    User->>Frontend: Enter the credentials
-    Frontend->>Backend API: POST /api/auth/login
-    Backend API->>PostgreSQL: Verify user
-    PostgreSQL-->>Backend API: User data
-    Backend API->>Backend API: Compare password (bcrypt)
-    Backend API->>Backend API: Generate JWT token
-    Backend API-->>Frontend: Return token + user data
+    participant User
+    participant Frontend
+    participant BackendAPI as Backend API
+    participant PostgreSQL
+    
+    User->>Frontend: Enter credentials
+    Frontend->>BackendAPI: POST /api/auth/login
+    BackendAPI->>PostgreSQL: Verify user
+    PostgreSQL-->>BackendAPI: User data
+    BackendAPI->>BackendAPI: Compare password (bcrypt)
+    BackendAPI->>BackendAPI: Generate JWT token
+    BackendAPI-->>Frontend: Return token + user data
     Frontend->>Frontend: Store token in cookie
     Frontend-->>User: Redirect to dashboard
 ```
@@ -220,21 +225,40 @@ sequenceDiagram
 #### 2️⃣ Real-Time Code Collaboration Flow
 ```mermaid
 sequenceDiagram
-    User A->>Frontend A: Types code
-    Frontend A->>Backend (Socket.io): code:update event
-    Backend->>Redis Pub/Sub: Publish to room channel
-    Redis Pub/Sub->>All Backend Instances: Broadcast event
-    Backend->>Frontend B, C, D: Emit code:updated
-    Frontend B, C, D->>Monaco Editor: Apply changes
-    Frontend B, C, D-->>User B, C, D: See updated code
+    participant UserA as User A
+    participant FrontendA as Frontend A
+    participant Backend as Backend (Socket.io)
+    participant Redis as Redis Pub/Sub
+    participant AllBackends as All Backend Instances
+    participant OtherFrontends as Other Frontends (B, C, D)
+    participant Editor as Monaco Editor
+    participant OtherUsers as Other Users (B, C, D)
+    
+    UserA->>FrontendA: Types code
+    FrontendA->>Backend: code:update event
+    Backend->>Redis: Publish to room channel
+    Redis->>AllBackends: Broadcast event
+    AllBackends->>OtherFrontends: Emit code:updated
+    OtherFrontends->>Editor: Apply changes
+    OtherFrontends-->>OtherUsers: See updated code
 ```
 
 #### 3️⃣ Code Execution Flow
 ```mermaid
 sequenceDiagram
+    participant User
+    participant Frontend
+    participant BackendAPI as Backend API
+    participant BullMQ
+    participant Redis
+    participant Worker
+    participant Docker
+    participant SocketIO as Socket.io
+    participant AllUsers as All Users in Room
+    
     User->>Frontend: Click "Run Code"
-    Frontend->>Backend API: POST /api/code/execute
-    Backend API->>BullMQ: Add job to queue
+    Frontend->>BackendAPI: POST /api/code/execute
+    BackendAPI->>BullMQ: Add job to queue
     BullMQ->>Redis: Store job
     Worker->>Redis: Poll for jobs
     Redis-->>Worker: Return job
@@ -242,10 +266,10 @@ sequenceDiagram
     Docker->>Docker: Execute code (isolated)
     Docker-->>Worker: Return output/errors
     Worker->>Redis: Store result
-    Backend API->>Redis: Poll for result
-    Redis-->>Backend API: Return result
-    Backend API->>Socket.io: Broadcast to room
-    Socket.io-->>All Users: Display output
+    BackendAPI->>Redis: Poll for result
+    Redis-->>BackendAPI: Return result
+    BackendAPI->>SocketIO: Broadcast to room
+    SocketIO-->>AllUsers: Display output
 ```
 
 ### Database Schema
