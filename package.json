@@ -23,10 +23,12 @@
   "author": "CodeMitra Team",
   "license": "MIT",
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
+    "prisma": "^5.22.0",
     "puppeteer": "^24.17.0",
     "socket.io-client": "^4.8.1"
   },
