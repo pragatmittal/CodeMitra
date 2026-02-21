@@ -104,11 +104,24 @@ app.use(errorHandler);
 // Start server
 async function startServer() {
   try {
+
+    // 🔥 DATABASE DEBUG CHECK (TEMPORARY)
+    const db = await prisma.$queryRaw`SELECT current_database();`;
+    console.log("🔥 Connected to DB:", db);
+
+    const tables = await prisma.$queryRaw`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public';
+    `;
+    console.log("🔥 Tables in DB:", tables);
+
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
       console.log(`WebSocket server initialized`);
     });
+
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
