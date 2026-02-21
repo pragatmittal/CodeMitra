@@ -84,4 +84,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${PORT:-10000}/healthz || exit 1
 
 # Start the application
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+CMD ["npm", "start"]
