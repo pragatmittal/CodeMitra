@@ -116,7 +116,7 @@ async function startServer() {
     `;
     console.log("🔥 Tables in DB:", tables);
 
-    server.listen(PORT, () => {
+    server.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
       console.log(`WebSocket server initialized`);
