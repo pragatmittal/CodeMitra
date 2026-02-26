@@ -30,15 +30,11 @@ export function Hero({ onLogin, onRegister }: HeroProps) {
       title: 'Real-time Collaboration',
       description: 'Code together in real-time with Monaco Editor'
     },
+    
     {
-      icon: Video,
-      title: 'Video Calls',
-      description: 'Built-in video calling with screen sharing'
-    },
-    {
-      icon: MessageSquare,
-      title: 'Live Chat',
-      description: 'Communicate instantly with your team'
+      icon: Users,
+      title: 'Team Management',
+      description: 'Manage team members, roles, and permissions with granular control'
     },
     {
       icon: Shield,
@@ -48,7 +44,7 @@ export function Hero({ onLogin, onRegister }: HeroProps) {
     {
       icon: Zap,
       title: 'Multi-language',
-      description: 'Support for 10+ programming languages'
+      description: 'Support for 4 programming languages'
     },
     {
       icon: Globe,

@@ -33,7 +33,7 @@ export function Features() {
     {
       icon: Zap,
       title: 'Multi-language Support',
-      description: 'Support for 10+ programming languages with intelligent syntax highlighting and language-specific features.',
+      description: 'Support for 4 programming languages with intelligent syntax highlighting and language-specific features.',
       benefits: ['4 languages', 'Smart completion', 'Error detection', 'Debugging tools']
     },
     {
