@@ -19,22 +19,22 @@ export function Features() {
     {
       icon: Code2,
       title: 'Real-time Collaborative Editing',
-      description: 'Multiple developers can edit code simultaneously with live cursor tracking, syntax highlighting, and instant synchronization.',
-      benefits: ['Live cursor tracking', 'Syntax highlighting', 'Auto-completion', 'Real-time sync']
+      description: 'Multiple developers can edit code simultaneously with , syntax highlighting, and instant synchronization.',
+      benefits: [ 'Syntax highlighting', 'Real-time sync']
     },
     
     
     {
       icon: Shield,
       title: 'Secure Code Execution',
-      description: 'Run code safely in isolated Docker containers with resource limits and security scanning.',
+      description: 'Run code safely in isolated Docker containers with resource limits and security scanning to prevent abuse.',
       benefits: ['Docker isolation', 'Resource limits', 'Security scanning', 'Safe execution']
     },
     {
       icon: Zap,
       title: 'Multi-language Support',
       description: 'Support for 4 programming languages with intelligent syntax highlighting and language-specific features.',
-      benefits: ['4 languages', 'Smart completion', 'Error detection', 'Debugging tools']
+      benefits: ['4 languages',  'Error detection', 'Debugging tools']
     },
     {
       icon: Globe,
