@@ -232,16 +232,7 @@ export function Hero({ onLogin, onRegister }: HeroProps) {
             transition={{ duration: 0.6, delay: 1.0 }}
             className="text-center"
           >
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Trusted by developers worldwide
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-8 opacity-60">
-              {/* Placeholder for company logos */}
-              <div className="w-24 h-8 bg-gray-300 dark:bg-gray-600 rounded"></div>
-              <div className="w-24 h-8 bg-gray-300 dark:bg-gray-600 rounded"></div>
-              <div className="w-24 h-8 bg-gray-300 dark:bg-gray-600 rounded"></div>
-              <div className="w-24 h-8 bg-gray-300 dark:bg-gray-600 rounded"></div>
-            </div>
+            
           </motion.div>
         </div>
       </div>
