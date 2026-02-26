@@ -22,18 +22,8 @@ export function Features() {
       description: 'Multiple developers can edit code simultaneously with live cursor tracking, syntax highlighting, and instant synchronization.',
       benefits: ['Live cursor tracking', 'Syntax highlighting', 'Auto-completion', 'Real-time sync']
     },
-    {
-      icon: Video,
-      title: 'Integrated Video Calling',
-      description: 'Built-in video conferencing with screen sharing, recording, and presentation mode for seamless team collaboration.',
-      benefits: ['HD video calls', 'Screen sharing', 'Recording', 'Presentation mode']
-    },
-    {
-      icon: MessageSquare,
-      title: 'Instant Team Chat',
-      description: 'Communicate with your team instantly through text chat, code snippets, and file sharing within the editor.',
-      benefits: ['Text messaging', 'Code snippets', 'File sharing', 'Emoji reactions']
-    },
+    
+    
     {
       icon: Shield,
       title: 'Secure Code Execution',
@@ -44,7 +34,7 @@ export function Features() {
       icon: Zap,
       title: 'Multi-language Support',
       description: 'Support for 10+ programming languages with intelligent syntax highlighting and language-specific features.',
-      benefits: ['10+ languages', 'Smart completion', 'Error detection', 'Debugging tools']
+      benefits: ['4 languages', 'Smart completion', 'Error detection', 'Debugging tools']
     },
     {
       icon: Globe,
