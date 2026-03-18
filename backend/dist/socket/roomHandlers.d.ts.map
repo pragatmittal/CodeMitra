@@ -1,0 +1,1 @@
+{"version":3,"file":"roomHandlers.d.ts","sourceRoot":"","sources":["../../src/socket/roomHandlers.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,mBAAmB,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAKtD,eAAO,MAAM,iBAAiB,GAAI,IAAI,MAAM,EAAE,QAAQ,mBAAmB,EAAE,cAAc,CAAC,MAAM,EAAE,MAAM,EAAE,MAAM,EAAE,MAAM,KAAK,OAAO,CAAC,OAAO,CAAC,EAAE,WAAW,GAAG,CAAC,MAAM,EAAE,GAAG,CAAC,MAAM,CAAC,CAAC,SAuYjL,CAAC"}

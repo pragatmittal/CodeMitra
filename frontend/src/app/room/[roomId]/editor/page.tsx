@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { SocketProvider } from '@/lib/socket';
 import CollaborativeEditor from '@/components/editor/CollaborativeEditor';
 
-export default function RoomEditorPage({ params }: { params: { roomId: string } }) {
+export default function RoomEditorPage({ params }: { params: Promise<{ roomId: string }> }) {
+  const { roomId } = use(params);
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
@@ -30,7 +31,7 @@ export default function RoomEditorPage({ params }: { params: { roomId: string } 
 
   return (
     <SocketProvider>
-      <CollaborativeEditor roomId={params.roomId} />
+      <CollaborativeEditor roomId={roomId} />
     </SocketProvider>
   );
 }

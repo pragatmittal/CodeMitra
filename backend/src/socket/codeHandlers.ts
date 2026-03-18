@@ -3,7 +3,60 @@ import { AuthenticatedSocket, Server } from './types';
 import { Queue } from 'bullmq';
 import { redisClient, bullMQRedisConfig } from '../utils/redis';
 
+type CodeUpdatedPayload = {
+  roomId: string;
+  code: string;
+  language: string;
+  timestamp: number;
+  userId: string;
+  userName: string;
+  user: { id: string; name: string; avatar: string | null };
+};
 
+type CodeUpdateAck =
+  | { ok: true; serverTime: number }
+  | { ok: false; serverTime: number; error: string };
+
+// Coalesced persistence per room (shared across sockets in this process)
+const latestRoomState: Map<string, { code: string; language: string; updatedAt: number }> = new Map();
+const lastPersistedState: Map<string, { code: string; language: string }> = new Map();
+const persistTimers: Map<string, NodeJS.Timeout> = new Map();
+
+const PERSIST_IDLE_MS = Number(process.env.CODE_PERSIST_IDLE_MS || 900);
+const MAX_CODE_BYTES = Number(process.env.MAX_CODE_BYTES || 500_000);
+
+function schedulePersist(roomId: string) {
+  const existing = persistTimers.get(roomId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(async () => {
+    persistTimers.delete(roomId);
+    const latest = latestRoomState.get(roomId);
+    if (!latest) return;
+
+    const last = lastPersistedState.get(roomId);
+    if (last && last.code === latest.code && last.language === latest.language) return;
+
+    try {
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          code: latest.code,
+          language: latest.language,
+          updatedAt: new Date()
+        }
+      });
+      lastPersistedState.set(roomId, { code: latest.code, language: latest.language });
+    } catch (err: any) {
+      console.error('[CODE:PERSIST] Failed to persist latest room state:', {
+        roomId,
+        message: err?.message || String(err)
+      });
+    }
+  }, PERSIST_IDLE_MS);
+
+  persistTimers.set(roomId, timer);
+}
 
 // Create BullMQ queue for code execution
 const codeExecutionQueue = new Queue('code-execution', {
@@ -23,47 +76,70 @@ export const setupCodeHandlers = (io: Server, socket: AuthenticatedSocket, isUse
   console.log('🔧 Setting up code handlers for socket:', socket.id);
   
   // Handle code updates with real-time sync
-  socket.on('code:update', async (data: { roomId: string; code: string; language?: string; userId?: string; userName?: string; timestamp?: number }) => {
+  socket.on('code:update', async (data: { roomId: string; code: string; language?: string; userId?: string; userName?: string; timestamp?: number }, ack?: (res: CodeUpdateAck) => void) => {
     try {
       const { roomId, code, language } = data;
       const userId = socket.userId!;
+      const serverTime = Date.now();
 
       console.log(`📤📤📤 BACKEND: code:update handler called for roomId="${roomId}" by user="${socket.user?.name}"`);
       console.log(`📤📤📤 BACKEND: Event data:`, data);
       console.log(`📤📤📤 BACKEND: Code length: ${code.length}, language: ${language}`);
 
+      if (!roomId || typeof roomId !== 'string') {
+        ack?.({ ok: false, serverTime, error: 'Invalid roomId' });
+        return;
+      }
+
+      if (typeof code !== 'string') {
+        ack?.({ ok: false, serverTime, error: 'Invalid code' });
+        return;
+      }
+
+      if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) {
+        ack?.({ ok: false, serverTime, error: 'Payload too large' });
+        return;
+      }
+
       // Check if user is authorized
       const isAuthorized = await isUserInRoom(userId, roomId);
       if (!isAuthorized) {
         socket.emit('code:error', { message: 'You are not authorized to edit code in this room' });
+        ack?.({ ok: false, serverTime, error: 'Not authorized' });
         return;
       }
 
-      // Update code in database
-      const updateData: any = { code };
-      if (language) {
-        updateData.language = language;
-      }
+      const safeLanguage = language || 'javascript';
 
-      await prisma.room.update({
-        where: { id: roomId },
-        data: updateData
-      });
-
-      // CRITICAL FIX: Broadcast code update to ALL users in the room (including sender for consistency)
-      io.to(roomId).emit('code:updated', {
-        code,
-        language: language || 'javascript',
-        userId,
-        userName: socket.user?.name,
+      // Broadcast-first: realtime update should not wait on persistence
+      const payload: CodeUpdatedPayload = {
         roomId,
-        timestamp: Date.now()
-      });
+        code,
+        language: safeLanguage,
+        timestamp: serverTime,
+        userId,
+        userName: socket.user?.name || 'Unknown',
+        user: {
+          id: userId,
+          name: socket.user?.name || 'Unknown',
+          avatar: socket.user?.avatar || null
+        }
+      };
+
+      socket.to(roomId).emit('code:updated', payload);
+      ack?.({ ok: true, serverTime });
+
+      // Coalesce persistence (idle flush)
+      latestRoomState.set(roomId, { code, language: safeLanguage, updatedAt: serverTime });
+      schedulePersist(roomId);
 
       console.log(`Code updated in room ${roomId} by ${socket.user?.name}`);
     } catch (error) {
       console.error('Error updating code:', error);
       socket.emit('code:error', { message: 'Failed to update code' });
+      try {
+        ack?.({ ok: false, serverTime: Date.now(), error: 'Failed to update code' });
+      } catch {}
     }
   });
 

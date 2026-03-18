@@ -1,0 +1,2 @@
+{"sessionId":"18e324","timestamp":1773770079072,"location":"backend/src/socket/index.ts:setupSocketIO","message":"Socket.IO init","data":{"redisUrlSet":true,"redisAvailable":false,"adapter":"Adapter","corsOrigin":"http://localhost:3000"},"hypothesisId":"H1","runId":"pre-fix"}
+{"sessionId":"18e324","timestamp":1773770079073,"location":"backend/src/socket/index.ts:setupSocketIO","message":"Using memory adapter","data":{"redisAvailable":false,"adapter":"Adapter"},"hypothesisId":"H1","runId":"pre-fix"}

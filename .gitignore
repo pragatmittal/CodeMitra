@@ -1,1 +1,9 @@
 node_modules
+.next
+frontend/.next
+
+# local env files
+.env
+.env.*
+!.env.example
+frontend/.env.local

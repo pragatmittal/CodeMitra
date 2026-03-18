@@ -441,6 +441,13 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/codemitra
 # Redis
 REDIS_URL=redis://localhost:6379
 
+# Realtime persistence tuning (recommended for Supabase/Postgres)
+# Persist latest room state after this idle window (ms). Realtime broadcasts are immediate.
+CODE_PERSIST_IDLE_MS=900
+
+# Safety limit for full-document updates (bytes)
+MAX_CODE_BYTES=500000
+
 # JWT
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
 

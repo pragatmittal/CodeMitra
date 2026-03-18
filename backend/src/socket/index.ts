@@ -3,55 +3,123 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../utils/prisma';
+import { redisClient } from '../utils/redis';
 
 // Global declaration for Socket.IO instance
 declare global {
   var io: Server;
 }
 
-// Redis connection with error handling - make it completely optional
-let pubClient: Redis | null = null;
-let subClient: Redis | null = null;
-let redisAvailable = false;
+/**
+ * Real-time design goals:
+ * - Broadcast-first (no DB in the hot path)
+ * - Coalesce + throttle persistence (avoid write-per-keystroke)
+ * - Avoid per-keystroke DB auth checks (track membership in-memory after join auth)
+ *
+ * NOTE: Redis adapter should be enabled whenever REDIS_URL is present,
+ * otherwise multi-instance deployments will drop cross-instance room broadcasts.
+ */
 
-// Only try to connect to Redis if explicitly configured
-if (process.env.REDIS_URL && process.env.REDIS_URL !== 'redis://localhost:6379' && !process.env.REDIS_URL.includes('codemitra-redis')) {
+type CodeUpdatedPayload = {
+  roomId: string;
+  code: string;
+  language: string;
+  timestamp: number;
+  userId: string;
+  userName: string;
+  user: { id: string; name: string; avatar: string | null };
+};
+
+type CodeUpdateAck =
+  | { ok: true; serverTime: number }
+  | { ok: false; serverTime: number; error: string };
+
+const roomUsers: Map<string, Set<string>> = new Map();
+
+// Coalesced persistence (roomId -> latest state + timer)
+const latestRoomState: Map<string, { code: string; language: string; updatedAt: number }> = new Map();
+const lastPersistedState: Map<string, { code: string; language: string }> = new Map();
+const persistTimers: Map<string, NodeJS.Timeout> = new Map();
+
+const PERSIST_IDLE_MS = Number(process.env.CODE_PERSIST_IDLE_MS || 900); // tuned for Supabase latency
+const MAX_CODE_BYTES = Number(process.env.MAX_CODE_BYTES || 500_000); // ~500KB guardrail
+
+function trackJoin(roomId: string, userId: string) {
+  if (!roomUsers.has(roomId)) roomUsers.set(roomId, new Set());
+  roomUsers.get(roomId)!.add(userId);
+}
+
+function trackLeave(roomId: string, userId: string) {
+  const set = roomUsers.get(roomId);
+  if (!set) return;
+  set.delete(userId);
+  if (set.size === 0) roomUsers.delete(roomId);
+}
+
+function schedulePersist(roomId: string) {
+  const existing = persistTimers.get(roomId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(async () => {
+    persistTimers.delete(roomId);
+
+    const latest = latestRoomState.get(roomId);
+    if (!latest) return;
+
+    const last = lastPersistedState.get(roomId);
+    if (last && last.code === latest.code && last.language === latest.language) {
+      return;
+    }
+
+    try {
+      await prisma.room.update({
+        where: { id: roomId },
+        data: {
+          code: latest.code,
+          language: latest.language,
+          updatedAt: new Date()
+        }
+      });
+      lastPersistedState.set(roomId, { code: latest.code, language: latest.language });
+    } catch (err: any) {
+      // Persistence failure should NOT break realtime; we log once per flush attempt.
+      console.error('[CODE:PERSIST] Failed to persist latest room state:', {
+        roomId,
+        message: err?.message || String(err)
+      });
+    }
+  }, PERSIST_IDLE_MS);
+
+  persistTimers.set(roomId, timer);
+}
+
+async function createRedisAdapterIfConfigured(): Promise<{ pub: Redis; sub: Redis } | null> {
+  if (!process.env.REDIS_URL) return null;
+
+  // Reuse the already configured redisClient URL/options as much as possible by duplicating it.
+  // ioredis duplicate() keeps connection options consistent (TLS, auth, etc).
   try {
-    pubClient = new Redis(process.env.REDIS_URL, {
-      maxRetriesPerRequest: 1,
-      lazyConnect: true,
-      connectTimeout: 2000,
-      commandTimeout: 2000
-    });
-    
-    pubClient.on('error', (err) => {
-      console.warn('Redis Pub Client Error (continuing without Redis):', err.message);
-      redisAvailable = false;
-    });
-    
-    pubClient.on('connect', () => {
-      console.log('Redis Pub Client Connected');
-      redisAvailable = true;
-    });
-    
-    subClient = pubClient.duplicate();
-    
-    subClient.on('error', (err) => {
-      console.warn('Redis Sub Client Error (continuing without Redis):', err.message);
-      redisAvailable = false;
-    });
-    
-    subClient.on('connect', () => {
-      console.log('Redis Sub Client Connected');
-      redisAvailable = true;
-    });
-  } catch (error) {
-    console.warn('Redis initialization failed (continuing without Redis):', error);
-    redisAvailable = false;
+    const pub = redisClient.duplicate();
+    const sub = redisClient.duplicate();
+
+    // Fail-fast-ish: try connecting, but don't block server startup for long.
+    await Promise.all([
+      pub.connect().catch(() => undefined),
+      sub.connect().catch(() => undefined)
+    ]);
+
+    // If either is not ready, skip adapter.
+    if ((pub.status !== 'ready' && pub.status !== 'connect') || (sub.status !== 'ready' && sub.status !== 'connect')) {
+      try { pub.disconnect(); } catch {}
+      try { sub.disconnect(); } catch {}
+      return null;
+    }
+
+    return { pub, sub };
+  } catch (e: any) {
+    console.warn('[SOCKET] Redis adapter init failed, continuing without adapter:', e?.message || String(e));
+    return null;
   }
-} else {
-  console.log('Redis not configured, using memory adapter');
-  redisAvailable = false;
 }
 
 export const setupSocketIO = (server: any) => {
@@ -60,20 +128,28 @@ export const setupSocketIO = (server: any) => {
       origin: process.env.FRONTEND_URL || 'http://localhost:3000',
       methods: ['GET', 'POST'],
       credentials: true
-    }
+    },
+    // Keep transports explicit; if WS upgrade fails, latency looks like "seconds".
+    transports: ['websocket', 'polling'],
+    allowEIO3: true
   });
 
-  // Only use Redis adapter if both clients are available and connected
-  if (redisAvailable && pubClient && subClient) {
-    try {
-      io.adapter(createAdapter(pubClient, subClient));
-      console.log('Socket.IO Redis adapter enabled');
-    } catch (error) {
-      console.warn('Redis adapter failed (using memory adapter):', error);
+  // Enable Redis adapter when REDIS_URL is present (required for multi-instance).
+  // Do not rely on heuristics for REDIS_URL contents.
+  createRedisAdapterIfConfigured().then((clients) => {
+    if (!clients) {
+      console.log('[SOCKET] Redis adapter disabled (no REDIS_URL or Redis unavailable)');
+      return;
     }
-  } else {
-    console.log('Socket.IO using memory adapter (Redis not available)');
-  }
+    try {
+      io.adapter(createAdapter(clients.pub, clients.sub));
+      console.log('[SOCKET] Socket.IO Redis adapter enabled');
+    } catch (e: any) {
+      console.warn('[SOCKET] Redis adapter setup failed (using memory adapter):', e?.message || String(e));
+      try { clients.pub.disconnect(); } catch {}
+      try { clients.sub.disconnect(); } catch {}
+    }
+  });
 
   // Authentication middleware
   io.use(async (socket, next) => {
@@ -175,6 +251,7 @@ export const setupSocketIO = (server: any) => {
         });
 
         socket.join(roomId);
+        trackJoin(roomId, userId);
         
         const room = result;
         const participantCount = room.participants.length;
@@ -266,6 +343,7 @@ export const setupSocketIO = (server: any) => {
         });
 
         socket.leave(roomId);
+        trackLeave(roomId, userId);
         
         if (result) {
           const participantCount = result.participants.length;
@@ -298,45 +376,61 @@ export const setupSocketIO = (server: any) => {
     });
 
     // Code update
-    socket.on('code:update', async (data) => {
+    socket.on('code:update', async (data: any, ack?: (res: CodeUpdateAck) => void) => {
       try {
-        const { roomId, code, language } = data;
+        const { roomId, code, language } = data || {};
         const userId = socket.data.user.id;
+        const serverTime = Date.now();
 
-        // Verify user is in room
-        const participant = await prisma.roomParticipant.findUnique({
-          where: { 
-            roomId_userId: { roomId, userId } 
-          }
-        });
+        if (!roomId || typeof roomId !== 'string') {
+          ack?.({ ok: false, serverTime, error: 'Invalid roomId' });
+          return;
+        }
 
-        if (!participant) {
+        if (typeof code !== 'string') {
+          ack?.({ ok: false, serverTime, error: 'Invalid code' });
+          return;
+        }
+
+        if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) {
+          ack?.({ ok: false, serverTime, error: 'Payload too large' });
+          return;
+        }
+
+        // Fast membership check (avoids DB on each keystroke).
+        const members = roomUsers.get(roomId);
+        if (!members || !members.has(userId)) {
+          ack?.({ ok: false, serverTime, error: 'Not in room' });
           socket.emit('error', { message: 'Not in room' });
           return;
         }
 
-        // Update room code in database
-        await prisma.room.update({
-          where: { id: roomId },
-          data: { 
-            code, 
-            language: language || 'javascript',
-            updatedAt: new Date() 
-          }
-        });
-
-        // Broadcast to others in the room
+        const safeLanguage = typeof language === 'string' && language.length > 0 ? language : 'javascript';
         const userData = getUserData();
-        socket.to(roomId).emit('code:updated', {
-          code,
-          language: language || 'javascript',
-          user: userData
-        });
 
-        console.log(`Code updated in room ${roomId} by ${socket.data.user.name}`);
+        // Broadcast-first: realtime update should not wait on persistence.
+        const payload: CodeUpdatedPayload = {
+          roomId,
+          code,
+          language: safeLanguage,
+          timestamp: serverTime,
+          userId: userData.id,
+          userName: userData.name,
+          user: userData
+        };
+
+        socket.to(roomId).emit('code:updated', payload);
+        ack?.({ ok: true, serverTime });
+
+        // Coalesce persistence (idle flush).
+        latestRoomState.set(roomId, { code, language: safeLanguage, updatedAt: serverTime });
+        schedulePersist(roomId);
       } catch (error) {
         console.error('Code update error:', error);
         socket.emit('error', { message: 'Failed to update code' });
+        try {
+          ack?.({ ok: false, serverTime: Date.now(), error: 'Failed to update code' });
+        } catch {}
       }
     });
 
@@ -390,6 +484,14 @@ export const setupSocketIO = (server: any) => {
       
       // Handle graceful disconnect - update status in all rooms
       try {
+        // Fast cleanup for membership map
+        for (const [roomId, members] of roomUsers.entries()) {
+          if (members.has(socket.data.user.id)) {
+            members.delete(socket.data.user.id);
+            if (members.size === 0) roomUsers.delete(roomId);
+          }
+        }
+
         const rooms = await prisma.roomParticipant.findMany({
           where: { 
             userId: socket.data.user.id,
