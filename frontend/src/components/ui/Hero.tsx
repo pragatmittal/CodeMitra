@@ -23,6 +23,7 @@ interface HeroProps {
 
 export function Hero({ onLogin, onRegister }: HeroProps) {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const demoVideoUrl = '/demo.mp4';
 
   const features = [
     {
@@ -247,11 +248,18 @@ export function Hero({ onLogin, onRegister }: HeroProps) {
             >
               ×
             </button>
-            <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
-              <div className="text-center text-white">
-                <Play className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">Demo video coming soon...</p>
-              </div>
+            <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden shadow-2xl">
+              <video
+                className="w-full h-full object-cover"
+                src={demoVideoUrl}
+                controls
+                autoPlay
+                muted={false}
+                playsInline
+              >
+                <track kind="captions" />
+                Your browser does not support the video element.
+              </video>
             </div>
           </div>
         </div>
