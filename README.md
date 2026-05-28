@@ -144,6 +144,70 @@ Kubernetes        - Production orchestration (k8s/)
 
 *Architecture showing Client Layer, Network Layer (NGINX), Backend Services (scalable), Worker Services, and Data Layer (PostgreSQL + Redis)*
 
+### Database Design
+
+The database model for CodeMitra is centered on users, rooms, room participants, and code execution history. Below is the ER diagram that reflects the core Postgres schema with Prisma ORM.
+
+```mermaid
+erDiagram
+    USER ||--o{ ROOM : "creates"
+    USER ||--o{ ROOM_PARTICIPANT : "joins"
+    USER ||--o{ CODE_EXECUTION : "executes"
+    ROOM ||--o{ ROOM_PARTICIPANT : "has"
+    ROOM ||--o{ CODE_EXECUTION : "records"
+    
+    USER {
+        string id PK "UUID"
+        string email UK "unique"
+        string password "encrypted"
+        string name
+        string avatar "optional"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ROOM {
+        string id PK "UUID"
+        string name
+        string description "optional"
+        string language "default: javascript"
+        boolean visibility "public/private"
+        string password "optional"
+        text code "editor content"
+        text input "stdin"
+        text output "stdout"
+        int max_capacity "default: 10"
+        string creator_id FK
+        timestamp created_at
+        timestamp updated_at
+        timestamp last_activity
+    }
+    
+    ROOM_PARTICIPANT {
+        string id PK "UUID"
+        string room_id FK
+        string user_id FK
+        int cursor_line "editor position"
+        int cursor_column "editor position"
+        string status "active/inactive"
+        timestamp joined_at
+        timestamp last_activity
+    }
+    
+    CODE_EXECUTION {
+        string id PK "UUID"
+        string room_id FK
+        string user_id FK
+        text code
+        string language
+        text output "optional"
+        text error "optional"
+        int execution_time "milliseconds"
+        string status "success/error/timeout"
+        timestamp created_at
+    }
+```
+
 ### Component Overview
 
 ```
